@@ -98,7 +98,16 @@ const userSchema = new mongoose.Schema(
     // ============================================================
     kycStatus: {
       type: String,
-      enum: ['not_submitted', 'NOT_SUBMITTED', 'pending', 'PENDING', 'verified', 'APPROVED', 'rejected', 'REJECTED'],
+      enum: [
+        'not_submitted',
+        'NOT_SUBMITTED',
+        'pending',
+        'PENDING',
+        'verified',
+        'APPROVED',
+        'rejected',
+        'REJECTED',
+      ],
       default: 'not_submitted',
     },
     kycLevel: {
@@ -232,10 +241,13 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 /**
- * Generate JWT token
+ * Generate JWT token — uses the JWT key ring (supports zero-downtime rotation)
+ * Signs with the CURRENT secret. Verified later against the full ring.
  */
 userSchema.methods.generateAuthToken = function () {
   const jwt = require('jsonwebtoken');
+  const { signSecret, jwtExpire } = require('../config/jwt');
+
   return jwt.sign(
     {
       id: this._id,
@@ -243,8 +255,8 @@ userSchema.methods.generateAuthToken = function () {
       email: this.email,
       username: this.username,
     },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '30d' }
+    signSecret, // ← always the CURRENT key
+    { expiresIn: jwtExpire }
   );
 };
 
