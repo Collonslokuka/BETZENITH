@@ -1,559 +1,421 @@
 // server/data/enhancedMatches.js
-
 const mongoose = require('mongoose');
 
 // ============ COMPLETE LEAGUE DATA WITH ALL SPORTS ============
 const LEAGUES = {
-  // ============ SOCCER LEAGUES ============
-  'Premier League': { 
-    country: 'England', 
-    sport: 'soccer', 
-    icon: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 
+  // ========== SOCCER LEAGUES ==========
+  'Premier League': {
+    country: 'England',
+    sport: 'soccer',
+    icon: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
     matchDuration: 90,
     timezone: 'Europe/London',
-    typicalTimes: ['12:30', '15:00', '17:30', '19:45']
+    typicalTimes: ['12:30', '15:00', '17:30', '19:45'],
   },
-  'La Liga': { 
-    country: 'Spain', 
-    sport: 'soccer', 
-    icon: '🇪🇸', 
+  'La Liga': {
+    country: 'Spain',
+    sport: 'soccer',
+    icon: '🇪🇸',
     matchDuration: 90,
     timezone: 'Europe/Madrid',
-    typicalTimes: ['14:00', '16:15', '18:30', '21:00']
+    typicalTimes: ['14:00', '16:15', '18:30', '21:00'],
   },
-  'Bundesliga': { 
-    country: 'Germany', 
-    sport: 'soccer', 
-    icon: '🇩🇪', 
+  'Bundesliga': {
+    country: 'Germany',
+    sport: 'soccer',
+    icon: '🇩🇪',
     matchDuration: 90,
     timezone: 'Europe/Berlin',
-    typicalTimes: ['15:30', '18:30', '20:30']
+    typicalTimes: ['15:30', '18:30', '20:30'],
   },
-  'Serie A': { 
-    country: 'Italy', 
-    sport: 'soccer', 
-    icon: '🇮🇹', 
+  'Serie A': {
+    country: 'Italy',
+    sport: 'soccer',
+    icon: '🇮🇹',
     matchDuration: 90,
     timezone: 'Europe/Rome',
-    typicalTimes: ['15:00', '18:00', '20:45']
+    typicalTimes: ['15:00', '18:00', '20:45'],
   },
-  'Ligue 1': { 
-    country: 'France', 
-    sport: 'soccer', 
-    icon: '🇫🇷', 
+  'Ligue 1': {
+    country: 'France',
+    sport: 'soccer',
+    icon: '🇫🇷',
     matchDuration: 90,
     timezone: 'Europe/Paris',
-    typicalTimes: ['17:00', '19:00', '21:00']
+    typicalTimes: ['17:00', '19:00', '21:00'],
   },
-  'Champions League': { 
-    country: 'Europe', 
-    sport: 'soccer', 
-    icon: '🏆', 
+  'Champions League': {
+    country: 'Europe',
+    sport: 'soccer',
+    icon: '🏆',
     matchDuration: 90,
     timezone: 'Europe/Paris',
-    typicalTimes: ['18:45', '21:00']
+    typicalTimes: ['18:45', '21:00'],
   },
-  'Europa League': { 
-    country: 'Europe', 
-    sport: 'soccer', 
-    icon: '🏆', 
+  'Europa League': {
+    country: 'Europe',
+    sport: 'soccer',
+    icon: '🏆',
     matchDuration: 90,
     timezone: 'Europe/Paris',
-    typicalTimes: ['18:45', '21:00']
+    typicalTimes: ['18:45', '21:00'],
   },
-  'World Cup': { 
-    country: 'International', 
-    sport: 'soccer', 
-    icon: '🌍', 
+  'World Cup': {
+    country: 'International',
+    sport: 'soccer',
+    icon: '🌍',
     matchDuration: 90,
     timezone: 'UTC',
-    typicalTimes: ['11:00', '14:00', '17:00', '20:00']
+    typicalTimes: ['11:00', '14:00', '17:00', '20:00'],
   },
-  'MLS': { 
-    country: 'USA', 
-    sport: 'soccer', 
-    icon: '🇺🇸', 
+  'MLS': {
+    country: 'USA',
+    sport: 'soccer',
+    icon: '🇺🇸',
     matchDuration: 90,
     timezone: 'America/New_York',
-    typicalTimes: ['19:30', '20:00', '22:00']
+    typicalTimes: ['19:30', '20:00', '22:00'],
   },
-  'Brazil Serie A': { 
-    country: 'Brazil', 
-    sport: 'soccer', 
-    icon: '🇧🇷', 
+  'Brazil Serie A': {
+    country: 'Brazil',
+    sport: 'soccer',
+    icon: '🇧🇷',
     matchDuration: 90,
     timezone: 'America/Sao_Paulo',
-    typicalTimes: ['16:00', '18:30', '21:00']
+    typicalTimes: ['16:00', '18:30', '21:00'],
   },
-  'Eredivisie': { 
-    country: 'Netherlands', 
-    sport: 'soccer', 
-    icon: '🇳🇱', 
+  'Eredivisie': {
+    country: 'Netherlands',
+    sport: 'soccer',
+    icon: '🇳🇱',
     matchDuration: 90,
     timezone: 'Europe/Amsterdam',
-    typicalTimes: ['18:45', '20:00', '21:00']
+    typicalTimes: ['18:45', '20:00', '21:00'],
   },
-  'Primeira Liga': { 
-    country: 'Portugal', 
-    sport: 'soccer', 
-    icon: '🇵🇹', 
+  'Primeira Liga': {
+    country: 'Portugal',
+    sport: 'soccer',
+    icon: '🇵🇹',
     matchDuration: 90,
     timezone: 'Europe/Lisbon',
-    typicalTimes: ['16:30', '19:00', '21:15']
+    typicalTimes: ['16:30', '19:00', '21:15'],
   },
-  'Turkish Super Lig': { 
-    country: 'Turkey', 
-    sport: 'soccer', 
-    icon: '🇹🇷', 
+  'Turkish Super Lig': {
+    country: 'Turkey',
+    sport: 'soccer',
+    icon: '🇹🇷',
     matchDuration: 90,
     timezone: 'Europe/Istanbul',
-    typicalTimes: ['17:00', '19:00', '20:30']
+    typicalTimes: ['17:00', '19:00', '20:30'],
   },
 
-  // ============ BASKETBALL LEAGUES ============
-  'NBA': { 
-    country: 'USA', 
-    sport: 'basketball', 
-    icon: '🏀', 
+  // ========== BASKETBALL LEAGUES ==========
+  'NBA': {
+    country: 'USA',
+    sport: 'basketball',
+    icon: '🏀',
     matchDuration: 48,
     timezone: 'America/New_York',
-    typicalTimes: ['19:30', '20:00', '22:30']
+    typicalTimes: ['19:30', '20:00', '22:30'],
   },
-  'EuroLeague': { 
-    country: 'Europe', 
-    sport: 'basketball', 
-    icon: '🏀', 
+  'EuroLeague': {
+    country: 'Europe',
+    sport: 'basketball',
+    icon: '🏀',
     matchDuration: 40,
     timezone: 'Europe/Paris',
-    typicalTimes: ['18:30', '20:00', '21:05']
+    typicalTimes: ['18:30', '20:00', '21:05'],
   },
-  'WNBA': { 
-    country: 'USA', 
-    sport: 'basketball', 
-    icon: '🏀', 
+  'WNBA': {
+    country: 'USA',
+    sport: 'basketball',
+    icon: '🏀',
     matchDuration: 40,
     timezone: 'America/New_York',
-    typicalTimes: ['19:00', '20:00']
+    typicalTimes: ['19:00', '20:00'],
   },
-  'NCAA Basketball': { 
-    country: 'USA', 
-    sport: 'basketball', 
-    icon: '🏀', 
+  'NCAA Basketball': {
+    country: 'USA',
+    sport: 'basketball',
+    icon: '🏀',
     matchDuration: 40,
     timezone: 'America/New_York',
-    typicalTimes: ['19:00', '21:00']
+    typicalTimes: ['19:00', '21:00'],
   },
-  'ACB': { 
-    country: 'Spain', 
-    sport: 'basketball', 
-    icon: '🏀', 
+  'ACB': {
+    country: 'Spain',
+    sport: 'basketball',
+    icon: '🏀',
     matchDuration: 40,
     timezone: 'Europe/Madrid',
-    typicalTimes: ['18:30', '20:45']
-  },
-  'NBL': { 
-    country: 'Australia', 
-    sport: 'basketball', 
-    icon: '🏀', 
-    matchDuration: 48,
-    timezone: 'Australia/Sydney',
-    typicalTimes: ['19:30', '20:30']
+    typicalTimes: ['18:00', '20:00'],
   },
 
-  // ============ AMERICAN FOOTBALL ============
-  'NFL': { 
-    country: 'USA', 
-    sport: 'football', 
-    icon: '🏈', 
+  // ========== AMERICAN FOOTBALL ==========
+  'NFL': {
+    country: 'USA',
+    sport: 'football',
+    icon: '🏈',
     matchDuration: 60,
     timezone: 'America/New_York',
-    typicalTimes: ['13:00', '16:25', '20:20']
+    typicalTimes: ['13:00', '16:25', '20:20'],
   },
-  'NCAAF': { 
-    country: 'USA', 
-    sport: 'football', 
-    icon: '🏈', 
+  'NCAAF': {
+    country: 'USA',
+    sport: 'football',
+    icon: '🏈',
     matchDuration: 60,
     timezone: 'America/New_York',
-    typicalTimes: ['12:00', '15:30', '19:30']
+    typicalTimes: ['12:00', '15:30', '19:00'],
   },
-  'CFL': { 
-    country: 'Canada', 
-    sport: 'football', 
-    icon: '🏈', 
-    matchDuration: 60,
-    timezone: 'America/Toronto',
-    typicalTimes: ['19:00', '20:00']
-  },
-  'XFL': { 
-    country: 'USA', 
-    sport: 'football', 
-    icon: '🏈', 
+  'Super Bowl': {
+    country: 'USA',
+    sport: 'football',
+    icon: '🏆',
     matchDuration: 60,
     timezone: 'America/New_York',
-    typicalTimes: ['15:00', '20:00']
-  },
-  'Super Bowl': { 
-    country: 'USA', 
-    sport: 'football', 
-    icon: '🏆', 
-    matchDuration: 60,
-    timezone: 'America/New_York',
-    typicalTimes: ['18:30']
+    typicalTimes: ['18:30'],
   },
 
-  // ============ TENNIS ============
-  'Wimbledon': { 
-    country: 'UK', 
-    sport: 'tennis', 
-    icon: '🎾', 
+  // ========== TENNIS ==========
+  'Wimbledon': {
+    country: 'UK',
+    sport: 'tennis',
+    icon: '🎾',
     matchDuration: 5,
     timezone: 'Europe/London',
-    typicalTimes: ['11:00', '13:30', '16:00']
+    typicalTimes: ['11:00', '13:30', '16:00'],
   },
-  'US Open': { 
-    country: 'USA', 
-    sport: 'tennis', 
-    icon: '🎾', 
+  'US Open': {
+    country: 'USA',
+    sport: 'tennis',
+    icon: '🎾',
     matchDuration: 5,
     timezone: 'America/New_York',
-    typicalTimes: ['11:00', '19:00']
+    typicalTimes: ['11:00', '19:00'],
   },
-  'French Open': { 
-    country: 'France', 
-    sport: 'tennis', 
-    icon: '🎾', 
+  'French Open': {
+    country: 'France',
+    sport: 'tennis',
+    icon: '🎾',
     matchDuration: 5,
     timezone: 'Europe/Paris',
-    typicalTimes: ['11:00', '14:00']
+    typicalTimes: ['11:00', '14:00'],
   },
-  'Australian Open': { 
-    country: 'Australia', 
-    sport: 'tennis', 
-    icon: '🎾', 
+  'Australian Open': {
+    country: 'Australia',
+    sport: 'tennis',
+    icon: '🎾',
     matchDuration: 5,
     timezone: 'Australia/Melbourne',
-    typicalTimes: ['11:00', '19:30']
+    typicalTimes: ['11:00', '19:30'],
   },
 
-  // ============ BASEBALL ============
-  'MLB': { 
-    country: 'USA', 
-    sport: 'baseball', 
-    icon: '⚾', 
+  // ========== BASEBALL ==========
+  'MLB': {
+    country: 'USA',
+    sport: 'baseball',
+    icon: '⚾',
     matchDuration: 9,
     timezone: 'America/New_York',
-    typicalTimes: ['13:10', '19:10', '20:05']
+    typicalTimes: ['13:10', '19:10', '20:05'],
   },
-  'MLB Preseason': { 
-    country: 'USA', 
-    sport: 'baseball', 
-    icon: '⚾', 
+  'MLB Preseason': {
+    country: 'USA',
+    sport: 'baseball',
+    icon: '⚾',
     matchDuration: 9,
     timezone: 'America/New_York',
-    typicalTimes: ['13:05', '19:05']
+    typicalTimes: ['13:05', '19:05'],
   },
-  'NPB': { 
-    country: 'Japan', 
-    sport: 'baseball', 
-    icon: '⚾', 
+  'NPB': {
+    country: 'Japan',
+    sport: 'baseball',
+    icon: '⚾',
     matchDuration: 9,
     timezone: 'Asia/Tokyo',
-    typicalTimes: ['12:00', '18:00']
+    typicalTimes: ['12:00', '18:00'],
   },
-  'KBO': { 
-    country: 'Korea', 
-    sport: 'baseball', 
-    icon: '⚾', 
+  'KBO': {
+    country: 'Korea',
+    sport: 'baseball',
+    icon: '⚾',
     matchDuration: 9,
     timezone: 'Asia/Seoul',
-    typicalTimes: ['14:00', '18:30']
+    typicalTimes: ['14:00', '18:30'],
   },
 
-  // ============ HOCKEY ============
-  'NHL': { 
-    country: 'USA/Canada', 
-    sport: 'hockey', 
-    icon: '🏒', 
+  // ========== HOCKEY ==========
+  'NHL': {
+    country: 'USA/Canada',
+    sport: 'hockey',
+    icon: '🏒',
     matchDuration: 60,
     timezone: 'America/New_York',
-    typicalTimes: ['19:00', '20:00', '22:00']
+    typicalTimes: ['19:00', '20:00', '22:00'],
   },
-  'KHL': { 
-    country: 'Russia', 
-    sport: 'hockey', 
-    icon: '🏒', 
+  'KHL': {
+    country: 'Russia',
+    sport: 'hockey',
+    icon: '🏒',
     matchDuration: 60,
     timezone: 'Europe/Moscow',
-    typicalTimes: ['17:00', '19:30']
+    typicalTimes: ['17:00', '19:30'],
   },
-  'World Championship': { 
-    country: 'International', 
-    sport: 'hockey', 
-    icon: '🏒', 
-    matchDuration: 60,
-    timezone: 'UTC',
-    typicalTimes: ['12:15', '16:15', '20:15']
-  },
-  'SHL': { 
-    country: 'Sweden', 
-    sport: 'hockey', 
-    icon: '🏒', 
+  'SHL': {
+    country: 'Sweden',
+    sport: 'hockey',
+    icon: '🏒',
     matchDuration: 60,
     timezone: 'Europe/Stockholm',
-    typicalTimes: ['19:00', '20:00']
-  },
-  'Liiga': { 
-    country: 'Finland', 
-    sport: 'hockey', 
-    icon: '🏒', 
-    matchDuration: 60,
-    timezone: 'Europe/Helsinki',
-    typicalTimes: ['18:30', '18:30']
+    typicalTimes: ['19:00', '20:00'],
   },
 
-  // ============ MMA ============
-  'UFC': { 
-    country: 'USA', 
-    sport: 'mma', 
-    icon: '🥊', 
+  // ========== MMA ==========
+  'UFC': {
+    country: 'USA',
+    sport: 'mma',
+    icon: '🥊',
     matchDuration: 5,
     timezone: 'America/Las_Vegas',
-    typicalTimes: ['19:00', '22:00']
+    typicalTimes: ['19:00', '22:00'],
   },
-  'Bellator': { 
-    country: 'USA', 
-    sport: 'mma', 
-    icon: '🥊', 
+  'Bellator': {
+    country: 'USA',
+    sport: 'mma',
+    icon: '🥊',
     matchDuration: 5,
     timezone: 'America/New_York',
-    typicalTimes: ['20:00']
+    typicalTimes: ['20:00'],
   },
-  'ONE Championship': { 
-    country: 'Singapore', 
-    sport: 'mma', 
-    icon: '🥊', 
+  'ONE Championship': {
+    country: 'Singapore',
+    sport: 'mma',
+    icon: '🥊',
     matchDuration: 5,
     timezone: 'Asia/Singapore',
-    typicalTimes: ['20:00']
-  },
-  'PFL': { 
-    country: 'USA', 
-    sport: 'mma', 
-    icon: '🥊', 
-    matchDuration: 5,
-    timezone: 'America/New_York',
-    typicalTimes: ['21:00']
+    typicalTimes: ['20:00'],
   },
 
-  // ============ BOXING ============
-  'Heavyweight Boxing': { 
-    country: 'Global', 
-    sport: 'boxing', 
-    icon: '🥊', 
+  // ========== BOXING ==========
+  'Heavyweight Boxing': {
+    country: 'Global',
+    sport: 'boxing',
+    icon: '🥊',
     matchDuration: 12,
     timezone: 'UTC',
-    typicalTimes: ['22:00', '23:00']
+    typicalTimes: ['22:00', '23:00'],
   },
-  'Lightweight Boxing': { 
-    country: 'Global', 
-    sport: 'boxing', 
-    icon: '🥊', 
+  'Lightweight Boxing': {
+    country: 'Global',
+    sport: 'boxing',
+    icon: '🥊',
     matchDuration: 12,
     timezone: 'UTC',
-    typicalTimes: ['21:00', '22:00']
-  },
-  'Welterweight Boxing': { 
-    country: 'Global', 
-    sport: 'boxing', 
-    icon: '🥊', 
-    matchDuration: 12,
-    timezone: 'UTC',
-    typicalTimes: ['20:00', '21:00']
+    typicalTimes: ['21:00', '22:00'],
   },
 
-  // ============ GOLF ============
-  'PGA Tour': { 
-    country: 'USA', 
-    sport: 'golf', 
-    icon: '⛳', 
+  // ========== GOLF ==========
+  'PGA Tour': {
+    country: 'USA',
+    sport: 'golf',
+    icon: '⛳',
     matchDuration: 4,
     timezone: 'America/New_York',
-    typicalTimes: ['08:00', '13:00']
+    typicalTimes: ['08:00', '13:00'],
   },
-  'The Masters': { 
-    country: 'USA', 
-    sport: 'golf', 
-    icon: '⛳', 
+  'The Masters': {
+    country: 'USA',
+    sport: 'golf',
+    icon: '⛳',
     matchDuration: 4,
     timezone: 'America/New_York',
-    typicalTimes: ['10:00', '15:00']
-  },
-  'The Open': { 
-    country: 'UK', 
-    sport: 'golf', 
-    icon: '⛳', 
-    matchDuration: 4,
-    timezone: 'Europe/London',
-    typicalTimes: ['09:00', '14:00']
-  },
-  'Ryder Cup': { 
-    country: 'International', 
-    sport: 'golf', 
-    icon: '⛳', 
-    matchDuration: 3,
-    timezone: 'UTC',
-    typicalTimes: ['08:00', '13:00']
+    typicalTimes: ['10:00', '15:00'],
   },
 
-  // ============ CRICKET ============
-  'IPL': { 
-    country: 'India', 
-    sport: 'cricket', 
-    icon: '🏏', 
+  // ========== CRICKET ==========
+  'IPL': {
+    country: 'India',
+    sport: 'cricket',
+    icon: '🏏',
     matchDuration: 20,
     timezone: 'Asia/Kolkata',
-    typicalTimes: ['15:30', '19:30']
+    typicalTimes: ['15:30', '19:30'],
   },
-  'The Ashes': { 
-    country: 'England/Australia', 
-    sport: 'cricket', 
-    icon: '🏏', 
+  'The Ashes': {
+    country: 'England/Australia',
+    sport: 'cricket',
+    icon: '🏏',
     matchDuration: 5,
     timezone: 'UTC',
-    typicalTimes: ['11:00']
+    typicalTimes: ['11:00'],
   },
-  'Big Bash': { 
-    country: 'Australia', 
-    sport: 'cricket', 
-    icon: '🏏', 
+  'Big Bash': {
+    country: 'Australia',
+    sport: 'cricket',
+    icon: '🏏',
     matchDuration: 20,
     timezone: 'Australia/Sydney',
-    typicalTimes: ['19:15']
-  },
-  'T20 World Cup': { 
-    country: 'International', 
-    sport: 'cricket', 
-    icon: '🏆', 
-    matchDuration: 20,
-    timezone: 'UTC',
-    typicalTimes: ['10:00', '14:00', '18:00']
-  },
-  'World Cup': { 
-    country: 'International', 
-    sport: 'cricket', 
-    icon: '🏆', 
-    matchDuration: 50,
-    timezone: 'UTC',
-    typicalTimes: ['11:00', '14:30']
-  },
-  'County Championship': { 
-    country: 'England', 
-    sport: 'cricket', 
-    icon: '🏏', 
-    matchDuration: 4,
-    timezone: 'Europe/London',
-    typicalTimes: ['11:00']
+    typicalTimes: ['19:15'],
   },
 
-  // ============ RUGBY ============
-  'Six Nations': { 
-    country: 'Europe', 
-    sport: 'rugby', 
-    icon: '🏉', 
+  // ========== RUGBY ==========
+  'Six Nations': {
+    country: 'Europe',
+    sport: 'rugby',
+    icon: '🏉',
     matchDuration: 80,
     timezone: 'Europe/London',
-    typicalTimes: ['14:15', '16:45']
+    typicalTimes: ['14:15', '16:45'],
   },
-  'Rugby World Cup': { 
-    country: 'International', 
-    sport: 'rugby', 
-    icon: '🏆', 
+  'Rugby World Cup': {
+    country: 'International',
+    sport: 'rugby',
+    icon: '🏆',
     matchDuration: 80,
     timezone: 'UTC',
-    typicalTimes: ['09:00', '11:00', '13:00', '15:00']
-  },
-  'Super Rugby': { 
-    country: 'Southern Hemisphere', 
-    sport: 'rugby', 
-    icon: '🏉', 
-    matchDuration: 80,
-    timezone: 'Pacific/Auckland',
-    typicalTimes: ['19:05']
-  },
-  'Premiership Rugby': { 
-    country: 'England', 
-    sport: 'rugby', 
-    icon: '🏉', 
-    matchDuration: 80,
-    timezone: 'Europe/London',
-    typicalTimes: ['19:45', '15:00']
-  },
-  'Top 14': { 
-    country: 'France', 
-    sport: 'rugby', 
-    icon: '🏉', 
-    matchDuration: 80,
-    timezone: 'Europe/Paris',
-    typicalTimes: ['21:05']
+    typicalTimes: ['09:00', '11:00', '13:00', '15:00'],
   },
 
-  // ============ FORMULA 1 ============
-  'Formula 1': { 
-    country: 'Global', 
-    sport: 'f1', 
-    icon: '🏎️', 
+  // ========== FORMULA 1 ==========
+  'Formula 1': {
+    country: 'Global',
+    sport: 'f1',
+    icon: '🏎️',
     matchDuration: 58,
     timezone: 'UTC',
-    typicalTimes: ['14:00', '15:00']
-  },
-  'F2 Championship': { 
-    country: 'Global', 
-    sport: 'f1', 
-    icon: '🏎️', 
-    matchDuration: 40,
-    timezone: 'UTC',
-    typicalTimes: ['11:00', '12:30']
-  },
-  'F3 Championship': { 
-    country: 'Global', 
-    sport: 'f1', 
-    icon: '🏎️', 
-    matchDuration: 30,
-    timezone: 'UTC',
-    typicalTimes: ['09:00', '10:30']
+    typicalTimes: ['14:00', '15:00'],
   },
 
-  // ============ ESPORTS ============
-  'League of Legends World Championship': { 
-    country: 'International', 
-    sport: 'esports', 
-    icon: '🎮', 
+  // ========== ESPORTS ==========
+  'League of Legends World Championship': {
+    country: 'International',
+    sport: 'esports',
+    icon: '🎮',
     matchDuration: 5,
     timezone: 'UTC',
-    typicalTimes: ['12:00', '15:00', '18:00', '21:00']
+    typicalTimes: ['12:00', '15:00', '18:00', '21:00'],
   },
-  'Dota 2 International': { 
-    country: 'International', 
-    sport: 'esports', 
-    icon: '🎮', 
+  'Dota 2 International': {
+    country: 'International',
+    sport: 'esports',
+    icon: '🎮',
     matchDuration: 5,
     timezone: 'UTC',
-    typicalTimes: ['11:00', '14:00', '17:00', '20:00']
+    typicalTimes: ['11:00', '14:00', '17:00', '20:00'],
   },
-  'CS:GO Major': { 
-    country: 'International', 
-    sport: 'esports', 
-    icon: '🎮', 
+  'CS:GO Major': {
+    country: 'International',
+    sport: 'esports',
+    icon: '🎮',
     matchDuration: 5,
     timezone: 'UTC',
-    typicalTimes: ['13:00', '16:00', '19:00', '22:00']
-  }
+    typicalTimes: ['13:00', '16:00', '19:00', '22:00'],
+  },
 };
 
 // ============ LEAGUE-SPECIFIC TEAMS ============
 const LEAGUE_TEAMS = {
-  // Premier League Teams (20 teams)
   'Premier League': [
     { name: 'Arsenal', abbr: 'ARS' },
     { name: 'Aston Villa', abbr: 'AVL' },
@@ -574,10 +436,8 @@ const LEAGUE_TEAMS = {
     { name: 'Sheffield United', abbr: 'SHU' },
     { name: 'Tottenham Hotspur', abbr: 'TOT' },
     { name: 'West Ham United', abbr: 'WHU' },
-    { name: 'Wolverhampton Wanderers', abbr: 'WOL' }
+    { name: 'Wolverhampton Wanderers', abbr: 'WOL' },
   ],
-
-  // La Liga Teams (20 teams)
   'La Liga': [
     { name: 'Alaves', abbr: 'ALA' },
     { name: 'Almeria', abbr: 'ALM' },
@@ -598,17 +458,15 @@ const LEAGUE_TEAMS = {
     { name: 'Real Sociedad', abbr: 'RSO' },
     { name: 'Sevilla', abbr: 'SEV' },
     { name: 'Valencia', abbr: 'VAL' },
-    { name: 'Villarreal', abbr: 'VIL' }
+    { name: 'Villarreal', abbr: 'VIL' },
   ],
-
-  // Bundesliga Teams (18 teams)
   'Bundesliga': [
     { name: 'FC Augsburg', abbr: 'AUG' },
     { name: 'Bayer Leverkusen', abbr: 'LEV' },
     { name: 'Bayern Munich', abbr: 'BAY' },
     { name: 'VfL Bochum', abbr: 'BOC' },
     { name: 'Borussia Dortmund', abbr: 'DOR' },
-    { name: 'Borussia Mönchengladbach', abbr: 'BMG' },
+    { name: 'Borussia Monchengladbach', abbr: 'BMG' },
     { name: 'Darmstadt 98', abbr: 'DAR' },
     { name: 'Eintracht Frankfurt', abbr: 'SGE' },
     { name: 'SC Freiburg', abbr: 'FRE' },
@@ -617,14 +475,11 @@ const LEAGUE_TEAMS = {
     { name: '1.FC Köln', abbr: 'KOL' },
     { name: 'RB Leipzig', abbr: 'RBL' },
     { name: 'Mainz 05', abbr: 'MAI' },
-    { name: 'FC St. Pauli', abbr: 'STP' },
     { name: 'VfB Stuttgart', abbr: 'STU' },
     { name: 'Union Berlin', abbr: 'UNB' },
     { name: 'Werder Bremen', abbr: 'BRE' },
-    { name: 'VfL Wolfsburg', abbr: 'WOB' }
+    { name: 'Wolfsburg', abbr: 'WOL' },
   ],
-
-  // Serie A Teams (20 teams)
   'Serie A': [
     { name: 'Atalanta', abbr: 'ATA' },
     { name: 'Bologna', abbr: 'BOL' },
@@ -646,11 +501,7 @@ const LEAGUE_TEAMS = {
     { name: 'Sassuolo', abbr: 'SAS' },
     { name: 'Torino', abbr: 'TOR' },
     { name: 'Udinese', abbr: 'UDI' },
-    { name: 'Venezia', abbr: 'VEN' },
-    { name: 'Verona', abbr: 'VER' }
   ],
-
-  // Ligue 1 Teams (18 teams)
   'Ligue 1': [
     { name: 'Angers', abbr: 'ANG' },
     { name: 'Auxerre', abbr: 'AUX' },
@@ -670,10 +521,8 @@ const LEAGUE_TEAMS = {
     { name: 'Reims', abbr: 'REI' },
     { name: 'Rennes', abbr: 'REN' },
     { name: 'Strasbourg', abbr: 'STR' },
-    { name: 'Toulouse', abbr: 'TLS' }
+    { name: 'Toulouse', abbr: 'TLS' },
   ],
-
-  // Champions League (top European teams)
   'Champions League': [
     { name: 'Real Madrid', abbr: 'RMA' },
     { name: 'Manchester City', abbr: 'MCI' },
@@ -694,10 +543,8 @@ const LEAGUE_TEAMS = {
     { name: 'Celtic', abbr: 'CEL' },
     { name: 'Galatasaray', abbr: 'GAL' },
     { name: 'Lazio', abbr: 'LAZ' },
-    { name: 'PSV Eindhoven', abbr: 'PSV' }
+    { name: 'PSV Eindhoven', abbr: 'PSV' },
   ],
-
-  // Europa League
   'Europa League': [
     { name: 'Roma', abbr: 'ROM' },
     { name: 'Bayer Leverkusen', abbr: 'LEV' },
@@ -708,22 +555,8 @@ const LEAGUE_TEAMS = {
     { name: 'Rangers', abbr: 'RAN' },
     { name: 'Ajax', abbr: 'AJA' },
     { name: 'Real Betis', abbr: 'BET' },
-    { name: 'Villarreal', abbr: 'VIL' }
+    { name: 'Villarreal', abbr: 'VIL' },
   ],
-
-  // Conference League
-  'Conference League': [
-    { name: 'Aston Villa', abbr: 'AVL' },
-    { name: 'Fiorentina', abbr: 'FIO' },
-    { name: 'Fenerbahce', abbr: 'FEN' },
-    { name: 'Club Brugge', abbr: 'CLU' },
-    { name: 'PAOK', abbr: 'PAO' },
-    { name: 'Lille', abbr: 'LIL' },
-    { name: 'Maccabi Tel Aviv', abbr: 'MTA' },
-    { name: 'Gent', abbr: 'GEN' }
-  ],
-
-  // NBA Teams
   'NBA': [
     { name: 'Atlanta Hawks', abbr: 'ATL' },
     { name: 'Boston Celtics', abbr: 'BOS' },
@@ -754,10 +587,8 @@ const LEAGUE_TEAMS = {
     { name: 'San Antonio Spurs', abbr: 'SAS' },
     { name: 'Toronto Raptors', abbr: 'TOR' },
     { name: 'Utah Jazz', abbr: 'UTA' },
-    { name: 'Washington Wizards', abbr: 'WAS' }
+    { name: 'Washington Wizards', abbr: 'WAS' },
   ],
-
-  // EuroLeague
   'EuroLeague': [
     { name: 'Real Madrid', abbr: 'RMA' },
     { name: 'Barcelona', abbr: 'BAR' },
@@ -776,10 +607,8 @@ const LEAGUE_TEAMS = {
     { name: 'Crvena Zvezda', abbr: 'CZV' },
     { name: 'Anadolu Efes', abbr: 'EFE' },
     { name: 'Valencia', abbr: 'VAL' },
-    { name: 'Baskonia', abbr: 'BAS' }
+    { name: 'Baskonia', abbr: 'BAS' },
   ],
-
-  // WNBA
   'WNBA': [
     { name: 'Las Vegas Aces', abbr: 'LVA' },
     { name: 'New York Liberty', abbr: 'NYL' },
@@ -792,10 +621,8 @@ const LEAGUE_TEAMS = {
     { name: 'Washington Mystics', abbr: 'WAS' },
     { name: 'Los Angeles Sparks', abbr: 'LAS' },
     { name: 'Indiana Fever', abbr: 'IND' },
-    { name: 'Minnesota Lynx', abbr: 'MIN' }
+    { name: 'Minnesota Lynx', abbr: 'MIN' },
   ],
-
-  // NFL Teams
   'NFL': [
     { name: 'Arizona Cardinals', abbr: 'ARI' },
     { name: 'Atlanta Falcons', abbr: 'ATL' },
@@ -828,26 +655,8 @@ const LEAGUE_TEAMS = {
     { name: 'Seattle Seahawks', abbr: 'SEA' },
     { name: 'Tampa Bay Buccaneers', abbr: 'TB' },
     { name: 'Tennessee Titans', abbr: 'TEN' },
-    { name: 'Washington Commanders', abbr: 'WAS' }
+    { name: 'Washington Commanders', abbr: 'WAS' },
   ],
-
-  // NCAAF
-  'NCAAF': [
-    { name: 'Alabama Crimson Tide', abbr: 'ALA' },
-    { name: 'Georgia Bulldogs', abbr: 'UGA' },
-    { name: 'Ohio State Buckeyes', abbr: 'OSU' },
-    { name: 'Michigan Wolverines', abbr: 'MIC' },
-    { name: 'Texas Longhorns', abbr: 'TEX' },
-    { name: 'Oklahoma Sooners', abbr: 'OKL' },
-    { name: 'USC Trojans', abbr: 'USC' },
-    { name: 'Notre Dame Fighting Irish', abbr: 'ND' },
-    { name: 'Clemson Tigers', abbr: 'CLE' },
-    { name: 'LSU Tigers', abbr: 'LSU' },
-    { name: 'Oregon Ducks', abbr: 'ORE' },
-    { name: 'Florida State Seminoles', abbr: 'FSU' }
-  ],
-
-  // MLB Teams
   'MLB': [
     { name: 'New York Yankees', abbr: 'NYY' },
     { name: 'Boston Red Sox', abbr: 'BOS' },
@@ -869,19 +678,7 @@ const LEAGUE_TEAMS = {
     { name: 'Cleveland Guardians', abbr: 'CLE' },
     { name: 'Chicago White Sox', abbr: 'CHW' },
     { name: 'Detroit Tigers', abbr: 'DET' },
-    { name: 'Kansas City Royals', abbr: 'KC' },
-    { name: 'Miami Marlins', abbr: 'MIA' },
-    { name: 'Cincinnati Reds', abbr: 'CIN' },
-    { name: 'Milwaukee Brewers', abbr: 'MIL' },
-    { name: 'Pittsburgh Pirates', abbr: 'PIT' },
-    { name: 'Colorado Rockies', abbr: 'COL' },
-    { name: 'Arizona Diamondbacks', abbr: 'ARI' },
-    { name: 'Oakland Athletics', abbr: 'OAK' },
-    { name: 'Los Angeles Angels', abbr: 'LAA' },
-    { name: 'Washington Nationals', abbr: 'WAS' }
   ],
-
-  // NHL Teams
   'NHL': [
     { name: 'Toronto Maple Leafs', abbr: 'TOR' },
     { name: 'Montreal Canadiens', abbr: 'MTL' },
@@ -903,21 +700,7 @@ const LEAGUE_TEAMS = {
     { name: 'St. Louis Blues', abbr: 'STL' },
     { name: 'Nashville Predators', abbr: 'NSH' },
     { name: 'Los Angeles Kings', abbr: 'LAK' },
-    { name: 'San Jose Sharks', abbr: 'SJS' },
-    { name: 'Anaheim Ducks', abbr: 'ANA' },
-    { name: 'Seattle Kraken', abbr: 'SEA' },
-    { name: 'Detroit Red Wings', abbr: 'DET' },
-    { name: 'Buffalo Sabres', abbr: 'BUF' },
-    { name: 'Ottawa Senators', abbr: 'OTT' },
-    { name: 'Philadelphia Flyers', abbr: 'PHI' },
-    { name: 'Washington Capitals', abbr: 'WSH' },
-    { name: 'Columbus Blue Jackets', abbr: 'CBJ' },
-    { name: 'New Jersey Devils', abbr: 'NJD' },
-    { name: 'New York Islanders', abbr: 'NYI' },
-    { name: 'Arizona Coyotes', abbr: 'ARI' }
   ],
-
-  // UFC
   'UFC': [
     { name: 'Jon Jones', abbr: 'JON' },
     { name: 'Stipe Miocic', abbr: 'STI' },
@@ -929,23 +712,13 @@ const LEAGUE_TEAMS = {
     { name: 'Kamaru Usman', abbr: 'USM' },
     { name: 'Israel Adesanya', abbr: 'ADE' },
     { name: 'Alex Pereira', abbr: 'PER' },
-    { name: 'Dricus du Plessis', abbr: 'DUP' },
-    { name: 'Sean Strickland', abbr: 'STR' },
     { name: 'Charles Oliveira', abbr: 'OLI' },
     { name: 'Justin Gaethje', abbr: 'GAE' },
     { name: 'Max Holloway', abbr: 'HOL' },
     { name: 'Ilia Topuria', abbr: 'TOP' },
     { name: 'Tom Aspinall', abbr: 'ASP' },
-    { name: 'Ciryl Gane', abbr: 'GAN' },
     { name: 'Jiri Prochazka', abbr: 'PRO' },
-    { name: 'Jamahal Hill', abbr: 'HIL' },
-    { name: 'Zhang Weili', abbr: 'ZHA' },
-    { name: 'Amanda Nunes', abbr: 'NUN' },
-    { name: 'Valentina Shevchenko', abbr: 'SHE' },
-    { name: 'Julianna Pena', abbr: 'PEN' }
   ],
-
-  // Heavyweight Boxing
   'Heavyweight Boxing': [
     { name: 'Tyson Fury', abbr: 'FURY' },
     { name: 'Oleksandr Usyk', abbr: 'USYK' },
@@ -957,11 +730,7 @@ const LEAGUE_TEAMS = {
     { name: 'Dillian Whyte', abbr: 'WHY' },
     { name: 'Luis Ortiz', abbr: 'ORT' },
     { name: 'Michael Hunter', abbr: 'HUN' },
-    { name: 'Otto Wallin', abbr: 'WAL' },
-    { name: 'Derek Chisora', abbr: 'CHI' }
   ],
-
-  // PGA Tour
   'PGA Tour': [
     { name: 'Scottie Scheffler', abbr: 'SCH' },
     { name: 'Rory McIlroy', abbr: 'McI' },
@@ -975,13 +744,7 @@ const LEAGUE_TEAMS = {
     { name: 'Jordan Spieth', abbr: 'SPI' },
     { name: 'Justin Thomas', abbr: 'THO' },
     { name: 'Collin Morikawa', abbr: 'MOR' },
-    { name: 'Matt Fitzpatrick', abbr: 'FIT' },
-    { name: 'Shane Lowry', abbr: 'LOW' },
-    { name: 'Tyrrell Hatton', abbr: 'HAT' },
-    { name: 'Tony Finau', abbr: 'FIN' }
   ],
-
-  // IPL
   'IPL': [
     { name: 'Mumbai Indians', abbr: 'MI' },
     { name: 'Chennai Super Kings', abbr: 'CSK' },
@@ -992,70 +755,26 @@ const LEAGUE_TEAMS = {
     { name: 'Rajasthan Royals', abbr: 'RR' },
     { name: 'Sunrisers Hyderabad', abbr: 'SRH' },
     { name: 'Lucknow Super Giants', abbr: 'LSG' },
-    { name: 'Gujarat Titans', abbr: 'GT' }
+    { name: 'Gujarat Titans', abbr: 'GT' },
   ],
-
-  // The Ashes
   'The Ashes': [
     { name: 'Australia', abbr: 'AUS' },
-    { name: 'England', abbr: 'ENG' }
+    { name: 'England', abbr: 'ENG' },
   ],
-
-  // Big Bash
   'Big Bash': [
     { name: 'Sydney Sixers', abbr: 'SYS' },
     { name: 'Perth Scorchers', abbr: 'PER' },
     { name: 'Brisbane Heat', abbr: 'BRI' },
     { name: 'Melbourne Stars', abbr: 'MLS' },
-    { name: 'Melbourne Renegades', abbr: 'MLR' },
-    { name: 'Sydney Thunder', abbr: 'SYT' },
-    { name: 'Adelaide Strikers', abbr: 'ADE' },
-    { name: 'Hobart Hurricanes', abbr: 'HOB' }
   ],
-
-  // T20 World Cup
-  'T20 World Cup': [
-    { name: 'India', abbr: 'IND' },
-    { name: 'Australia', abbr: 'AUS' },
-    { name: 'England', abbr: 'ENG' },
-    { name: 'Pakistan', abbr: 'PAK' },
-    { name: 'South Africa', abbr: 'SA' },
-    { name: 'New Zealand', abbr: 'NZ' },
-    { name: 'West Indies', abbr: 'WI' },
-    { name: 'Sri Lanka', abbr: 'SL' },
-    { name: 'Afghanistan', abbr: 'AFG' },
-    { name: 'Bangladesh', abbr: 'BAN' },
-    { name: 'Ireland', abbr: 'IRE' },
-    { name: 'Zimbabwe', abbr: 'ZIM' }
-  ],
-
-  // Six Nations
   'Six Nations': [
-    { name: 'England', abbr: 'ENG' },
-    { name: 'France', abbr: 'FRA' },
     { name: 'Ireland', abbr: 'IRE' },
-    { name: 'Scotland', abbr: 'SCO' },
-    { name: 'Wales', abbr: 'WAL' },
-    { name: 'Italy', abbr: 'ITA' }
-  ],
-
-  // Rugby World Cup
-  'Rugby World Cup': [
-    { name: 'New Zealand', abbr: 'NZL' },
-    { name: 'South Africa', abbr: 'RSA' },
-    { name: 'England', abbr: 'ENG' },
     { name: 'France', abbr: 'FRA' },
-    { name: 'Ireland', abbr: 'IRE' },
-    { name: 'Australia', abbr: 'AUS' },
+    { name: 'England', abbr: 'ENG' },
     { name: 'Wales', abbr: 'WAL' },
     { name: 'Scotland', abbr: 'SCO' },
-    { name: 'Argentina', abbr: 'ARG' },
-    { name: 'Fiji', abbr: 'FIJ' },
-    { name: 'Japan', abbr: 'JPN' },
-    { name: 'Georgia', abbr: 'GEO' }
+    { name: 'Italy', abbr: 'ITA' },
   ],
-
-  // Formula 1
   'Formula 1': [
     { name: 'Max Verstappen', abbr: 'VER' },
     { name: 'Lewis Hamilton', abbr: 'HAM' },
@@ -1067,19 +786,7 @@ const LEAGUE_TEAMS = {
     { name: 'Oscar Piastri', abbr: 'PIA' },
     { name: 'Fernando Alonso', abbr: 'ALO' },
     { name: 'Lance Stroll', abbr: 'STR' },
-    { name: 'Pierre Gasly', abbr: 'GAS' },
-    { name: 'Esteban Ocon', abbr: 'OCO' },
-    { name: 'Alex Albon', abbr: 'ALB' },
-    { name: 'Logan Sargeant', abbr: 'SAR' },
-    { name: 'Valtteri Bottas', abbr: 'BOT' },
-    { name: 'Zhou Guanyu', abbr: 'ZHO' },
-    { name: 'Kevin Magnussen', abbr: 'MAG' },
-    { name: 'Nico Hulkenberg', abbr: 'HUL' },
-    { name: 'Daniel Ricciardo', abbr: 'RIC' },
-    { name: 'Yuki Tsunoda', abbr: 'TSU' }
   ],
-
-  // Esports
   'League of Legends World Championship': [
     { name: 'T1', abbr: 'T1' },
     { name: 'Gen.G', abbr: 'GEN' },
@@ -1089,10 +796,7 @@ const LEAGUE_TEAMS = {
     { name: 'Fnatic', abbr: 'FNC' },
     { name: 'Team Liquid', abbr: 'TL' },
     { name: 'Cloud9', abbr: 'C9' },
-    { name: 'KT Rolster', abbr: 'KT' },
-    { name: 'Dplus KIA', abbr: 'DK' }
   ],
-
   'Dota 2 International': [
     { name: 'Team Spirit', abbr: 'TS' },
     { name: 'Gaimin Gladiators', abbr: 'GG' },
@@ -1101,9 +805,8 @@ const LEAGUE_TEAMS = {
     { name: 'OG', abbr: 'OG' },
     { name: 'Team Liquid', abbr: 'TL' },
     { name: 'BetBoom Team', abbr: 'BB' },
-    { name: 'Evil Geniuses', abbr: 'EG' }
+    { name: 'Evil Geniuses', abbr: 'EG' },
   ],
-
   'CS:GO Major': [
     { name: 'FaZe Clan', abbr: 'FAZE' },
     { name: 'NaVi', abbr: 'NAVI' },
@@ -1112,282 +815,309 @@ const LEAGUE_TEAMS = {
     { name: 'ENCE', abbr: 'ENCE' },
     { name: 'Heroic', abbr: 'HER' },
     { name: 'Cloud9', abbr: 'C9' },
-    { name: 'Team Liquid', abbr: 'TL' }
-  ]
+    { name: 'Team Liquid', abbr: 'TL' },
+  ],
 };
 
 // Helper functions
 const randomItem = (array) => array[Math.floor(Math.random() * array.length)];
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-// Generate match date based on league and desired status
+// Generate match date based on league and status
 const generateMatchDate = (league, status) => {
   const now = new Date();
   const leagueInfo = LEAGUES[league];
-  
   let matchDate = new Date(now);
-  
-  switch(status) {
+
+  switch (status) {
     case 'LIVE':
     case 'FIRST_HALF':
     case 'HALFTIME':
     case 'SECOND_HALF':
-      // Live matches started within last 2 hours
       matchDate.setHours(now.getHours() - randomInt(0, 2));
       matchDate.setMinutes(randomInt(0, 59));
       break;
-      
+
     case 'SCHEDULED':
-      // Scheduled matches in next 7 days
       matchDate.setDate(now.getDate() + randomInt(1, 7));
-      
-      // Use typical times for the league
       if (leagueInfo && leagueInfo.typicalTimes) {
         const typicalTime = randomItem(leagueInfo.typicalTimes);
         const [hours, minutes] = typicalTime.split(':');
-        matchDate.setHours(parseInt(hours), parseInt(minutes), 0);
+        matchDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
       } else {
-        matchDate.setHours(randomInt(12, 22), randomInt(0, 59), 0);
+        matchDate.setHours(randomInt(12, 22), randomInt(0, 59), 0, 0);
       }
       break;
-      
+
     case 'FINISHED':
-      // Finished matches from last 3 days
       matchDate.setDate(now.getDate() - randomInt(1, 3));
-      
-      // Use typical times
       if (leagueInfo && leagueInfo.typicalTimes) {
         const typicalTime = randomItem(leagueInfo.typicalTimes);
         const [hours, minutes] = typicalTime.split(':');
-        matchDate.setHours(parseInt(hours), parseInt(minutes), 0);
+        matchDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
       } else {
-        matchDate.setHours(randomInt(12, 22), randomInt(0, 59), 0);
+        matchDate.setHours(randomInt(12, 22), randomInt(0, 59), 0, 0);
       }
       break;
-      
-    default:
-      matchDate.setDate(now.getDate() + randomInt(0, 7));
   }
-  
+
   return matchDate;
 };
 
-// Calculate winner based on sport
-const calculateWinner = (sport) => {
-  const rand = Math.random();
-  if (sport === 'soccer') {
-    if (rand < 0.4) return 'HOME';
-    if (rand < 0.7) return 'AWAY';
-    return 'DRAW';
-  }
-  return rand < 0.55 ? 'HOME' : 'AWAY';
-};
-
-// Generate score based on sport and winner
-const generateScore = (sport, winner) => {
+const generateScore = (sport, winner = null) => {
   if (sport === 'soccer') {
     if (winner === 'HOME') return { home: randomInt(1, 4), away: randomInt(0, 2) };
     if (winner === 'AWAY') return { home: randomInt(0, 2), away: randomInt(1, 4) };
-    return { home: randomInt(0, 2), away: randomInt(0, 2) };
-  } else if (sport === 'basketball') {
-    if (winner === 'HOME') return { home: randomInt(100, 125), away: randomInt(85, 105) };
-    return { home: randomInt(85, 105), away: randomInt(100, 125) };
-  } else if (sport === 'football') {
-    if (winner === 'HOME') return { home: randomInt(21, 38), away: randomInt(7, 20) };
-    return { home: randomInt(7, 20), away: randomInt(21, 38) };
-  } else if (sport === 'baseball') {
-    if (winner === 'HOME') return { home: randomInt(4, 10), away: randomInt(1, 5) };
-    return { home: randomInt(1, 5), away: randomInt(4, 10) };
-  } else if (sport === 'hockey') {
-    if (winner === 'HOME') return { home: randomInt(3, 6), away: randomInt(1, 3) };
-    return { home: randomInt(1, 3), away: randomInt(3, 6) };
-  } else if (sport === 'tennis') {
-    if (winner === 'HOME') return { home: randomInt(2, 3), away: randomInt(0, 1) };
-    return { home: randomInt(0, 1), away: randomInt(2, 3) };
-  } else if (sport === 'mma' || sport === 'boxing') {
-    if (winner === 'HOME') return { home: 1, away: 0 };
-    return { home: 0, away: 1 };
-  } else if (sport === 'golf') {
-    return { home: randomInt(-15, -5), away: randomInt(-10, 0) };
-  } else if (sport === 'cricket') {
-    if (winner === 'HOME') return { home: randomInt(150, 250), away: randomInt(100, 180) };
-    return { home: randomInt(100, 180), away: randomInt(150, 250) };
-  } else if (sport === 'rugby') {
-    if (winner === 'HOME') return { home: randomInt(20, 40), away: randomInt(10, 25) };
-    return { home: randomInt(10, 25), away: randomInt(20, 40) };
-  } else if (sport === 'f1') {
-    return { 
-      home: `1:${randomInt(28, 35)}.${randomInt(100, 999)}`, 
-      away: `1:${randomInt(29, 36)}.${randomInt(100, 999)}` 
-    };
+    return { home: randomInt(0, 3), away: randomInt(0, 3) };
   }
-  return { home: randomInt(1, 5), away: randomInt(1, 5) };
+  if (sport === 'basketball') return { home: randomInt(85, 115), away: randomInt(85, 115) };
+  if (sport === 'football') return { home: randomInt(7, 35), away: randomInt(7, 35) };
+  if (sport === 'baseball') return { home: randomInt(1, 8), away: randomInt(1, 8) };
+  if (sport === 'hockey') return { home: randomInt(1, 5), away: randomInt(1, 5) };
+  if (sport === 'tennis') return { home: randomInt(0, 3), away: randomInt(0, 3) };
+  return { home: randomInt(0, 2), away: randomInt(0, 2) };
 };
 
-// Generate odds
+const calculateWinner = (sport) => {
+  const rand = Math.random();
+  if (sport === 'soccer') {
+    if (rand < 0.45) return 'HOME';
+    if (rand < 0.75) return 'AWAY';
+    return 'DRAW';
+  }
+  if (rand < 0.55) return 'HOME';
+  if (rand < 0.9) return 'AWAY';
+  return 'DRAW';
+};
+
 const generateOdds = (sport) => {
   if (sport === 'soccer') {
     return {
       home: parseFloat((1.5 + Math.random() * 3).toFixed(2)),
       draw: parseFloat((2.8 + Math.random() * 1.5).toFixed(2)),
-      away: parseFloat((1.5 + Math.random() * 3).toFixed(2))
+      away: parseFloat((1.5 + Math.random() * 3).toFixed(2)),
     };
   }
   return {
     home: parseFloat((1.2 + Math.random() * 2.5).toFixed(2)),
     draw: null,
-    away: parseFloat((1.2 + Math.random() * 2.5).toFixed(2))
+    away: parseFloat((1.2 + Math.random() * 2.5).toFixed(2)),
   };
 };
 
-// Generate markets
 const generateMarkets = (sport, odds) => {
   const markets = [
-    { name: '1', odds: odds.home, isActive: true },
-    ...(odds.draw ? [{ name: 'X', odds: odds.draw, isActive: true }] : []),
-    { name: '2', odds: odds.away, isActive: true },
+    { name: '1', odds: odds.home, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 },
+    ...(odds.draw ? [{ name: 'X', odds: odds.draw, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 }] : []),
+    { name: '2', odds: odds.away, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 },
   ];
-  
+
   if (sport === 'soccer') {
     markets.push(
-      { name: 'O 2.5', odds: 1.95, isActive: true },
-      { name: 'U 2.5', odds: 1.95, isActive: true },
-      { name: 'BTTS', odds: 1.90, isActive: true },
-      { name: 'BTTS No', odds: 1.90, isActive: true },
-      { name: 'DC 1X', odds: 1.25, isActive: true },
-      { name: 'DC 12', odds: 1.20, isActive: true },
-      { name: 'DC X2', odds: 1.25, isActive: true }
+      { name: 'Over 2.5', odds: 1.95, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 },
+      { name: 'Under 2.5', odds: 1.95, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 },
+      { name: 'BTTS', odds: 1.90, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 }
     );
   } else if (sport === 'basketball') {
     markets.push(
-      { name: 'O 220.5', odds: 1.90, isActive: true },
-      { name: 'U 220.5', odds: 1.90, isActive: true },
-      { name: 'Handicap -5.5', odds: 1.95, isActive: true },
-      { name: 'Handicap +5.5', odds: 1.95, isActive: true }
-    );
-  } else if (sport === 'football') {
-    markets.push(
-      { name: 'O 45.5', odds: 1.90, isActive: true },
-      { name: 'U 45.5', odds: 1.90, isActive: true }
-    );
-  } else if (sport === 'tennis') {
-    markets.push(
-      { name: 'O 22.5', odds: 1.90, isActive: true },
-      { name: 'U 22.5', odds: 1.90, isActive: true },
-      { name: 'Set 1 Winner', odds: 1.95, isActive: true },
-      { name: 'Set 2 Winner', odds: 1.95, isActive: true }
+      { name: 'Over 220.5', odds: 1.90, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 },
+      { name: 'Under 220.5', odds: 1.90, isActive: true, minBet: 10, maxBet: 1000000, volume: 0, betsCount: 0 }
     );
   }
-  
+
   return markets;
 };
 
-// Generate all matches for all leagues
+// Generate all matches (live + scheduled + finished)
 const generateAllMatches = () => {
   const allMatches = [];
   let matchCounter = 0;
-  
-  // For each league, generate matches
-  Object.keys(LEAGUES).forEach(leagueName => {
+
+  Object.keys(LEAGUES).forEach((leagueName) => {
     const league = LEAGUES[leagueName];
     const leagueTeams = LEAGUE_TEAMS[leagueName] || [];
-    
+
     if (leagueTeams.length < 2) return;
-    
-    // Determine number of matches based on league size and popularity
+
     const numMatches = randomInt(8, 15);
-    
+
     for (let i = 0; i < numMatches; i++) {
       matchCounter++;
-      
-      // Select teams
+
       const homeTeam = randomItem(leagueTeams);
       let awayTeam = randomItem(leagueTeams);
       while (awayTeam.name === homeTeam.name) {
         awayTeam = randomItem(leagueTeams);
       }
-      
-      // Determine match status (20% live, 40% scheduled, 40% finished)
+
+      // 20% live, 40% scheduled, 40% finished
       const rand = Math.random();
       let status, minute, isFinished, result;
-      
-      if (rand < 0.2) { // Live matches
+
+      if (rand < 0.2) {
         status = randomItem(['LIVE', 'FIRST_HALF', 'HALFTIME', 'SECOND_HALF']);
         minute = randomInt(5, league.matchDuration - 5);
         isFinished = false;
         result = null;
-      } else if (rand < 0.6) { // Scheduled
+      } else if (rand < 0.6) {
         status = 'SCHEDULED';
         minute = 0;
         isFinished = false;
         result = null;
-      } else { // Finished
+      } else {
         status = 'FINISHED';
         minute = league.matchDuration;
         isFinished = true;
-        const winner = calculateWinner(league.sport);
-        result = winner;
+        result = calculateWinner(league.sport);
       }
-      
-      // Generate date based on status
+
       const matchDate = generateMatchDate(leagueName, status);
-      
-      // Generate winner and score
       const winner = isFinished ? result : calculateWinner(league.sport);
-      const score = isFinished ? generateScore(league.sport, winner) : 
-                   (status !== 'SCHEDULED' ? generateScore(league.sport, winner) : { home: 0, away: 0 });
-      
-      // Generate odds
+      const score = isFinished
+        ? generateScore(league.sport, winner)
+        : status !== 'SCHEDULED'
+        ? generateScore(league.sport, winner)
+        : { home: 0, away: 0 };
+
       const odds = generateOdds(league.sport);
-      
-      // Generate markets
       const markets = generateMarkets(league.sport, odds);
-      
-      // Create match object
-      const match = {
+
+      allMatches.push({
         _id: new mongoose.Types.ObjectId(),
         id: `match-${matchCounter}`,
         sport: league.sport,
         league: leagueName,
         country: league.country,
+        matchDuration: league.matchDuration,
         homeTeam: {
           name: homeTeam.name,
           abbreviation: homeTeam.abbr,
-          logo: `/teams/${homeTeam.abbr.toLowerCase()}.png`
+          logo: `/teams/${homeTeam.abbr.toLowerCase()}.png`,
         },
         awayTeam: {
           name: awayTeam.name,
           abbreviation: awayTeam.abbr,
-          logo: `/teams/${awayTeam.abbr.toLowerCase()}.png`
+          logo: `/teams/${awayTeam.abbr.toLowerCase()}.png`,
         },
-        score: score,
-        status: status,
-        minute: minute,
+        score,
+        status,
+        minute,
         date: matchDate,
         time: matchDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         venue: `${homeTeam.name} Stadium`,
         startsAt: matchDate.toISOString(),
-        odds: odds,
-        markets: markets,
-        winner: winner,
-        isFinished: isFinished,
+        odds,
+        markets,
+        winner,
+        isFinished,
         result: isFinished ? winner : null,
-        views: randomInt(1000, 50000),
-        betCount: randomInt(10, 500),
-        totalVolume: randomInt(10000, 500000),
-        hasLiveStream: status !== 'SCHEDULED' && Math.random() > 0.3
-      };
-      
-      allMatches.push(match);
+        liveBettingEnabled: true,
+      });
     }
   });
-  
-  console.log(`✅ Generated ${allMatches.length} matches across ${Object.keys(LEAGUES).length} leagues`);
+
+  console.log(`Generated ${allMatches.length} matches across ${Object.keys(LEAGUES).length} leagues`);
   return allMatches;
+};
+
+// ============================================================
+//  NEW: GENERATE SCHEDULED (PRE-MATCH) FIXTURES ONLY
+//  Users can bet on these and wait for results
+// ============================================================
+const generateScheduledMatchesOnly = (countPerLeague = 15) => {
+  const scheduledMatches = [];
+  let matchCounter = 0;
+  const now = new Date();
+
+  Object.keys(LEAGUES).forEach((leagueName) => {
+    const league = LEAGUES[leagueName];
+    const leagueTeams = LEAGUE_TEAMS[leagueName] || [];
+
+    if (leagueTeams.length < 2) return;
+
+    for (let i = 0; i < countPerLeague; i++) {
+      matchCounter++;
+
+      const homeTeam = randomItem(leagueTeams);
+      let awayTeam = randomItem(leagueTeams);
+      while (awayTeam.name === homeTeam.name) {
+        awayTeam = randomItem(leagueTeams);
+      }
+
+      // Schedule 1 hour to 14 days from now
+      const matchDate = new Date(now);
+      const daysAhead = randomInt(0, 14);
+      matchDate.setDate(now.getDate() + daysAhead);
+
+      if (league.typicalTimes && league.typicalTimes.length > 0) {
+        const typicalTime = randomItem(league.typicalTimes);
+        const [hours, minutes] = typicalTime.split(':');
+        matchDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+      } else {
+        matchDate.setHours(randomInt(12, 22), randomInt(0, 59), 0, 0);
+      }
+
+      // Ensure the match is in the future
+      if (matchDate <= now) {
+        matchDate.setDate(matchDate.getDate() + 1);
+      }
+
+      const odds = generateOdds(league.sport);
+      const markets = generateMarkets(league.sport, odds);
+
+      scheduledMatches.push({
+        _id: new mongoose.Types.ObjectId(),
+        id: `scheduled-${matchCounter}`,
+        sport: league.sport,
+        league: leagueName,
+        country: league.country,
+        matchDuration: league.matchDuration,
+        homeTeam: {
+          name: homeTeam.name,
+          abbreviation: homeTeam.abbr,
+          logo: `/teams/${homeTeam.abbr.toLowerCase()}.png`,
+          form: Array(5).fill().map(() => randomItem(['W', 'D', 'L'])),
+        },
+        awayTeam: {
+          name: awayTeam.name,
+          abbreviation: awayTeam.abbr,
+          logo: `/teams/${awayTeam.abbr.toLowerCase()}.png`,
+          form: Array(5).fill().map(() => randomItem(['W', 'D', 'L'])),
+        },
+        score: { home: 0, away: 0 },
+        status: 'SCHEDULED',
+        minute: 0,
+        date: matchDate,
+        startsAt: matchDate.toISOString(),
+        time: matchDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        venue: `${homeTeam.name} Stadium`,
+        odds,
+        markets,
+        isFinished: false,
+        result: null,
+        liveBettingEnabled: true,
+        aiPrediction: {
+          predictedWinner:
+            odds.home < odds.away ? 'HOME' : odds.away < odds.home ? 'AWAY' : 'DRAW',
+          confidence: randomInt(55, 85),
+          probability: {
+            home: ((1 / odds.home) * 100).toFixed(1),
+            draw: odds.draw ? ((1 / odds.draw) * 100).toFixed(1) : '0',
+            away: ((1 / odds.away) * 100).toFixed(1),
+          },
+          insight: `${homeTeam.name} host ${awayTeam.name} in an upcoming fixture.`,
+        },
+      });
+    }
+  });
+
+  console.log(`📅 Generated ${scheduledMatches.length} scheduled (pre-match) fixtures`);
+  return scheduledMatches;
 };
 
 module.exports = {
   LEAGUES,
   LEAGUE_TEAMS,
-  generateAllMatches
+  generateAllMatches,
+  generateScheduledMatchesOnly,
 };

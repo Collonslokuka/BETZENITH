@@ -25,11 +25,13 @@ router.post('/', protect, placeBetValidation, async (req, res) => {
       });
     }
 
-    // Check if betting is available
+    // ✅ CHANGED: Betting closure check with detailed reason
     if (!match.isBettingAvailable()) {
       return res.status(400).json({
         success: false,
-        message: 'Betting is not available for this match'
+        message:
+          match.getBettingClosedReason() ||
+          'Betting is not available for this match'
       });
     }
 
@@ -184,10 +186,13 @@ router.post('/multi', protect, placeMultiBetValidation, async (req, res) => {
         });
       }
 
+      // ✅ CHANGED: Betting closure check with detailed reason
       if (!match.isBettingAvailable()) {
         return res.status(400).json({
           success: false,
-          message: `Betting not available for match ${match._id}`
+          message:
+            match.getBettingClosedReason() ||
+            `Betting not available for match ${match._id}`
         });
       }
 
