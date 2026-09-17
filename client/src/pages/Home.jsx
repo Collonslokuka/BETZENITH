@@ -1,5 +1,5 @@
 // src/pages/Home.jsx
-import axios from 'axios';
+import api from '../services/axios';   // ← NEW: shared instance
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -24,10 +24,9 @@ import {
 
 // Jackpot Counter Component
 const JackpotCounter = () => {
-  const [jackpot, setJackpot] = useState(12500000); // Starting jackpot
+  const [jackpot, setJackpot] = useState(12500000);
   
   useEffect(() => {
-    // Increment jackpot based on bets placed
     const interval = setInterval(() => {
       setJackpot(prev => prev + Math.floor(Math.random() * 10000));
     }, 5000);
@@ -58,7 +57,6 @@ const WinnersFeed = () => {
   const [winners, setWinners] = useState([]);
   
   useEffect(() => {
-    // Simulate real-time winners
     const mockWinners = [
       { username: "John***", amount: 125000, time: "2 mins ago", game: "EPL Accumulator" },
       { username: "Mary***", amount: 45000, time: "5 mins ago", game: "NBA Match" },
@@ -127,7 +125,6 @@ export default function Home() {
   const [liveMatches, setLiveMatches] = useState([]);
   const [upcomingMatches, setUpcomingMatches] = useState([]);
   const [finishedMatches, setFinishedMatches] = useState([]);
-  // ✅ CHANGED: Default tab now 'upcoming' so users land on scheduled matches
   const [selectedMatchType, setSelectedMatchType] = useState('upcoming');
 
   // Refs for horizontal scrolling
@@ -138,14 +135,11 @@ export default function Home() {
     loadMatches();
     fetchMatchesByType();
     
-    // Disable overscroll behavior on the whole page
     document.body.style.overscrollBehavior = 'none';
     document.documentElement.style.overscrollBehavior = 'none';
     
-    // Refresh matches every 30 seconds
     const interval = setInterval(fetchMatchesByType, 30000);
     
-    // Cleanup function to restore overscroll when component unmounts
     return () => {
       document.body.style.overscrollBehavior = '';
       document.documentElement.style.overscrollBehavior = '';
@@ -153,14 +147,13 @@ export default function Home() {
     };
   }, []);
 
-  // Fetch matches by type (Live, Scheduled, Finished)
-  // ✅ CHANGED: Uses /api/ai-matches/scheduled for pre-match betting
+  // ✅ FIXED: Use shared api instance (goes to Render, not Vercel)
   const fetchMatchesByType = async () => {
     try {
       const [liveRes, scheduledRes, finishedRes] = await Promise.all([
-        axios.get('/api/ai-matches/live').catch(() => ({ data: { data: [] } })),
-        axios.get('/api/ai-matches/scheduled').catch(() => ({ data: { data: [] } })),
-        axios.get('/api/ai-matches/finished').catch(() => ({ data: { data: [] } }))
+        api.get('/ai-matches/live').catch(() => ({ data: { data: [] } })),
+        api.get('/ai-matches/scheduled').catch(() => ({ data: { data: [] } })),
+        api.get('/ai-matches/finished').catch(() => ({ data: { data: [] } })),
       ]);
       
       setLiveMatches(liveRes.data.data || []);
@@ -200,7 +193,6 @@ export default function Home() {
     }));
   };
 
-  // Scroll functions for Top Leagues
   const scrollTopLeaguesLeft = () => {
     if (topLeaguesScrollRef.current) {
       topLeaguesScrollRef.current.scrollBy({ left: -300, behavior: 'smooth' });
@@ -213,7 +205,6 @@ export default function Home() {
     }
   };
 
-  // Scroll functions for Royal Hots
   const scrollRoyalHotsLeft = () => {
     if (royalHotsScrollRef.current) {
       royalHotsScrollRef.current.scrollBy({ left: -300, behavior: 'smooth' });
@@ -226,7 +217,6 @@ export default function Home() {
     }
   };
 
-  // Slides data - UPDATED with Betika green (#2e7d32)
   const slides = [
     {
       id: 1,
@@ -257,7 +247,6 @@ export default function Home() {
     }
   ];
 
-  // Auto-slide functionality
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
@@ -273,7 +262,6 @@ export default function Home() {
     setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
   };
 
-  // Royal Hots games with Betika yellow (#ffd700)
   const royalHotsGames = [
     { name: "Stacks o' Gold", icon: <GiGoldBar className="text-[#ffd700] w-full h-full" /> },
     { name: "Tiger Reign", icon: <GiCrown className="text-[#ffd700] w-full h-full" /> },
@@ -289,7 +277,6 @@ export default function Home() {
     { name: "Fortune Rangers", icon: <GiCowboyBoot className="text-[#ffd700] w-full h-full" /> },
   ];
 
-  // Top Leagues with actual league logos from API-Sports CDN - borders changed to Betika green
   const topLeagues = [
     {
       name: 'EPL',
@@ -328,114 +315,61 @@ export default function Home() {
     },
   ];
 
-  // All Sports with leagues and sport icons - UPDATED with Betika green
   const allSportsWithLeagues = [
     {
       name: 'Football',
       icon: <GiSoccerBall className="text-[#2e7d32]" />,
-      leagues: [
-        'EPL',
-        'UEFA Champions League',
-        'UEFA Europa League',
-        'La Liga - Spain',
-        'Serie A - Italy',
-        'Bundesliga - Germany',
-        'Ligue 1 - France',
-        'Championship'
-      ]
+      leagues: ['EPL', 'UEFA Champions League', 'UEFA Europa League', 'La Liga - Spain', 'Serie A - Italy', 'Bundesliga - Germany', 'Ligue 1 - France', 'Championship']
     },
     {
       name: 'Basketball',
       icon: <GiBasketballBall className="text-[#2e7d32]" />,
-      leagues: [
-        'NBA',
-        'EuroLeague',
-        'WNBA',
-        'NCAA Basketball',
-        'ACB',
-        'NBL'
-      ]
+      leagues: ['NBA', 'EuroLeague', 'WNBA', 'NCAA Basketball', 'ACB', 'NBL']
     },
     {
       name: 'American Football',
       icon: <GiAmericanFootballHelmet className="text-[#2e7d32]" />,
-      leagues: [
-        'NFL',
-        'NCAAF',
-        'CFL',
-        'XFL',
-        'Super Bowl'
-      ]
+      leagues: ['NFL', 'NCAAF', 'CFL', 'XFL', 'Super Bowl']
     },
     {
       name: 'Baseball',
       icon: <GiBaseballBat className="text-[#2e7d32]" />,
-      leagues: [
-        'MLB',
-        'MLB Preseason',
-        'NPB',
-        'KBO',
-        'College Baseball'
-      ]
+      leagues: ['MLB', 'MLB Preseason', 'NPB', 'KBO', 'College Baseball']
     },
     {
       name: 'Ice Hockey',
       icon: <GiHockey className="text-[#2e7d32]" />,
-      leagues: [
-        'NHL',
-        'KHL',
-        'World Championship',
-        'SHL',
-        'Liiga'
-      ]
+      leagues: ['NHL', 'KHL', 'World Championship', 'SHL', 'Liiga']
     },
     {
       name: 'Cricket',
       icon: <GiCricketBat className="text-[#2e7d32]" />,
-      leagues: [
-        'IPL',
-        'The Ashes',
-        'Big Bash',
-        'T20 World Cup',
-        'World Cup',
-        'County Championship'
-      ]
+      leagues: ['IPL', 'The Ashes', 'Big Bash', 'T20 World Cup', 'World Cup', 'County Championship']
     },
     {
       name: 'MMA',
       icon: <GiBoxingGlove className="text-[#2e7d32]" />,
-      leagues: [
-        'UFC',
-        'Bellator',
-        'ONE Championship',
-        'PFL',
-        'Boxing'
-      ]
+      leagues: ['UFC', 'Bellator', 'ONE Championship', 'PFL', 'Boxing']
     }
   ];
 
-  // Quick Access - UPDATED with Betika green
   const quickAccess = [
     { name: 'Favorites', icon: <FiStar className="text-[#2e7d32]" />, path: '/favorites' },
     { name: 'My Bets', icon: <FiBarChart2 className="text-[#2e7d32]" />, path: '/my-bets' },
     { name: 'Analytics', icon: <FiTrendingUp className="text-[#2e7d32]" />, path: '/analytics' },
-    { name: 'Responsible Gambling', icon: <FiShield className="text-[#2e7d32]" />, path: '/responsible-gambling' },
+    { name: 'Responsible Gambling', icon: <FiShield className="text-[#2e7d32]" />, path: '/responsible-gaming' },
   ];
 
   return (
     <div className="min-h-screen bg-[#0a0c14]" style={{ overscrollBehavior: 'none' }}>
-      {/* Hero Carousel - DIRECT CHILD, NO MAIN ELEMENT */}
+      {/* Hero Carousel */}
       <div className="relative w-full h-[400px] overflow-hidden">
         <div
           className="flex transition-transform duration-700 ease-in-out h-full"
           style={{ transform: `translateX(-${currentSlide * 100}%)` }}
         >
           {slides.map((slide) => (
-            <div
-              key={slide.id}
-              className="min-w-full h-full relative"
-              style={{ background: slide.bgImage }}
-            >
+            <div key={slide.id} className="min-w-full h-full relative" style={{ background: slide.bgImage }}>
               <div className="absolute inset-0 opacity-10">
                 <div className="absolute inset-0" style={{
                   backgroundImage: 'radial-gradient(circle at 2px 2px, #ffd700 1px, transparent 0)',
@@ -444,9 +378,7 @@ export default function Home() {
               </div>
               <div className="absolute inset-0 flex items-center container mx-auto px-4">
                 <div className="flex-1">
-                  <span className="text-8xl opacity-20 absolute top-10 right-20 rotate-12">
-                    {slide.icon}
-                  </span>
+                  <span className="text-8xl opacity-20 absolute top-10 right-20 rotate-12">{slide.icon}</span>
                   <h1 className="text-6xl font-bold text-white mb-2">{slide.title}</h1>
                   <h2 className="text-5xl font-bold text-white/90 mb-4">{slide.subtitle}</h2>
                   <p className="text-xl text-white/80 mb-6 max-w-lg">{slide.description}</p>
@@ -496,65 +428,42 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Main Content Area - DIRECT CHILD, NO MAIN ELEMENT */}
+      {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        {/* Two Column Layout for Jackpot and Winners */}
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <JackpotCounter />
           <WinnersFeed />
         </div>
 
-        {/* Top Leagues - GREEN MARGIN REDUCED WITH SHARP EDGES */}
+        {/* Top Leagues */}
         <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-5 mb-5 relative max-w-5xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-white font-semibold">Top Leagues</h2>
             <div className="flex items-center space-x-2">
-              <span className="text-xs bg-[#2e7d32]/10 text-[#2e7d32] px-2 py-1 rounded">
-                ACCUMULATOR BETS
-              </span>
+              <span className="text-xs bg-[#2e7d32]/10 text-[#2e7d32] px-2 py-1 rounded">ACCUMULATOR BETS</span>
               <span className="text-xs text-gray-500">3x 5x - Multiply Your Win</span>
             </div>
           </div>
-
-          {/* Scroll buttons */}
-          <button
-            onClick={scrollTopLeaguesLeft}
-            className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors"
-          >
+          <button onClick={scrollTopLeaguesLeft} className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
             <FiChevronLeftIcon size={20} />
           </button>
-          <button
-            onClick={scrollTopLeaguesRight}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors"
-          >
+          <button onClick={scrollTopLeaguesRight} className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
             <FiChevronRightIcon size={20} />
           </button>
-
-          {/* Scrollable container */}
-          <div
-            ref={topLeaguesScrollRef}
-            className="flex overflow-x-auto pb-2 gap-4 hide-scrollbar scroll-smooth"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-          >
+          <div ref={topLeaguesScrollRef} className="flex overflow-x-auto pb-2 gap-4 hide-scrollbar scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {topLeagues.map(league => (
               <div
                 key={league.name}
                 onClick={() => handleLeagueClick(league.name)}
                 className="flex-shrink-0 w-[160px] flex flex-col items-center border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105"
-                style={{
-                  backgroundColor: '#000000',
-                  aspectRatio: '1/1'
-                }}
+                style={{ backgroundColor: '#000000', aspectRatio: '1/1' }}
               >
-                {/* Inner white container - LOGOS AND WHITE CONTAINER STAY EXACTLY WHERE THEY WERE */}
                 <div className="absolute inset-x-0 top-[-12px] bottom-[20px] m-[0] bg-white rounded-none flex items-end justify-center overflow-hidden">
                   <div className="w-full h-full flex items-center justify-center transition-transform duration-300 hover:scale-125">
                     {league.icon}
                   </div>
                 </div>
-                {/* Green margin - REDUCED with SHARP EDGES (no rounded corners) */}
                 <div className="absolute inset-x-0 bottom-[-8px] h-[25px] bg-[#2e7d32]"></div>
-                {/* League name - positioned on top of green margin */}
                 <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium line-clamp-1 px-1 z-10">
                   {league.name}
                 </span>
@@ -563,172 +472,99 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Royal Hots - SAME GREEN MARGIN REDUCED WITH SHARP EDGES */}
+        {/* Royal Hots */}
         <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-5 mb-5 relative max-w-5xl mx-auto">
           <h2 className="text-white font-semibold mb-4 flex items-center">
             <span className="w-1 h-5 bg-[#2e7d32] rounded-full mr-3"></span>
             Royal Hots
           </h2>
-
-          {/* Scroll buttons */}
-          <button
-            onClick={scrollRoyalHotsLeft}
-            className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors"
-          >
+          <button onClick={scrollRoyalHotsLeft} className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
             <FiChevronLeftIcon size={20} />
           </button>
-          <button
-            onClick={scrollRoyalHotsRight}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors"
-          >
+          <button onClick={scrollRoyalHotsRight} className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
             <FiChevronRightIcon size={20} />
           </button>
-
-          {/* Scrollable container */}
-          <div
-            ref={royalHotsScrollRef}
-            className="overflow-x-auto pb-2 scroll-smooth"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-          >
-            {/* First Row - 6 items */}
+          <div ref={royalHotsScrollRef} className="overflow-x-auto pb-2 scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             <div className="flex gap-4 mb-4">
               {royalHotsGames.slice(0, 6).map((game, index) => (
-                <div
-                  key={index}
-                  onClick={() => {}}
-                  className="flex-shrink-0 w-[160px] aspect-square border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105"
-                  style={{
-                    backgroundColor: '#000000'
-                  }}
-                >
-                  {/* Inner white container - SHARP CORNERS (rounded-none) */}
+                <div key={index} onClick={() => {}} className="flex-shrink-0 w-[160px] aspect-square border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105" style={{ backgroundColor: '#000000' }}>
                   <div className="absolute inset-0 m-[0] bg-white rounded-none flex items-center justify-center overflow-hidden">
                     <div className="w-3/4 h-3/4 flex items-center justify-center transition-transform duration-300 hover:scale-125">
-                      <span className="text-[#ffd700] w-full h-full flex items-center justify-center text-2xl">
-                        {game.icon}
-                      </span>
+                      <span className="text-[#ffd700] w-full h-full flex items-center justify-center text-2xl">{game.icon}</span>
                     </div>
                   </div>
-                  {/* Green margin - SAME REDUCED with SHARP EDGES */}
                   <div className="absolute inset-x-0 bottom-[-8px] h-[25px] bg-[#2e7d32]"></div>
-                  {/* Game name - positioned on top of green margin */}
-                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium px-1 z-10">
-                    {game.name}
-                  </span>
+                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium px-1 z-10">{game.name}</span>
                 </div>
               ))}
             </div>
-
-            {/* Second Row - remaining 6 items */}
             <div className="flex gap-4">
               {royalHotsGames.slice(6, 12).map((game, index) => (
-                <div
-                  key={index + 6}
-                  onClick={() => {}}
-                  className="flex-shrink-0 w-[160px] aspect-square border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105"
-                  style={{
-                    backgroundColor: '#000000'
-                  }}
-                >
-                  {/* Inner white container - SHARP CORNERS (rounded-none) */}
+                <div key={index + 6} onClick={() => {}} className="flex-shrink-0 w-[160px] aspect-square border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105" style={{ backgroundColor: '#000000' }}>
                   <div className="absolute inset-0 m-[0] bg-white rounded-none flex items-center justify-center overflow-hidden">
                     <div className="w-3/4 h-3/4 flex items-center justify-center transition-transform duration-300 hover:scale-125">
-                      <span className="text-[#ffd700] w-full h-full flex items-center justify-center text-2xl">
-                        {game.icon}
-                      </span>
+                      <span className="text-[#ffd700] w-full h-full flex items-center justify-center text-2xl">{game.icon}</span>
                     </div>
                   </div>
-                  {/* Green margin - SAME REDUCED with SHARP EDGES */}
                   <div className="absolute inset-x-0 bottom-[-8px] h-[25px] bg-[#2e7d32]"></div>
-                  {/* Game name - positioned on top of green margin */}
-                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium px-1 z-10">
-                    {game.name}
-                  </span>
+                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium px-1 z-10">{game.name}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Live Sports Panel - UPDATED accent color to Betika green */}
+        {/* Live Sports Panel */}
         <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-5 max-w-5xl mx-auto mb-8">
           <h3 className="text-white font-semibold mb-4 flex items-center">
             <span className="w-1 h-5 bg-[#2e7d32] rounded-full mr-3"></span>
             LiveSports
           </h3>
-          
           <div className="mb-4">
             <div className="flex items-center space-x-2 mb-3">
               <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
               <span className="text-sm text-white">Football</span>
             </div>
             <div className="space-y-2 pl-3">
-              <div
-                onClick={() => handleLeagueClick('Bundesliga - Germany')}
-                className="text-xs text-gray-400 hover:text-white cursor-pointer flex items-center justify-between group"
-              >
+              <div onClick={() => handleLeagueClick('Bundesliga - Germany')} className="text-xs text-gray-400 hover:text-white cursor-pointer flex items-center justify-between group">
                 <span>Bundesliga - Germany</span>
-                <span className="text-[10px] text-[#2e7d32] opacity-0 group-hover:opacity-100 transition-opacity">
-                  SERIEA
-                </span>
+                <span className="text-[10px] text-[#2e7d32] opacity-0 group-hover:opacity-100 transition-opacity">SERIEA</span>
               </div>
-              <div
-                onClick={() => handleLeagueClick('Serie A - Italy')}
-                className="text-xs text-gray-400 hover:text-white cursor-pointer flex items-center justify-between group"
-              >
+              <div onClick={() => handleLeagueClick('Serie A - Italy')} className="text-xs text-gray-400 hover:text-white cursor-pointer flex items-center justify-between group">
                 <span>Serie A - Italy</span>
-                <span className="text-[10px] text-[#2e7d32] opacity-0 group-hover:opacity-100 transition-opacity">
-                  BUNDESLIGA
-                </span>
+                <span className="text-[10px] text-[#2e7d32] opacity-0 group-hover:opacity-100 transition-opacity">BUNDESLIGA</span>
               </div>
               <div className="text-xs text-gray-400 flex items-center justify-between">
                 <span>Ligue 1 - France</span>
-                <span className="text-[10px] text-[#2e7d32]">
-                  UEFACHAMPIONS
-                </span>
+                <span className="text-[10px] text-[#2e7d32]">UEFACHAMPIONS</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Match Sections - Live, Scheduled, Finished */}
+        {/* Match Sections */}
         <div className="max-w-5xl mx-auto mt-4">
-          {/* Match Type Tabs */}
           <div className="flex space-x-2 mb-4 bg-[#0f1219] p-2 rounded-lg border border-[#2a3042]">
             <button
               onClick={() => setSelectedMatchType('live')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedMatchType === 'live'
-                  ? 'bg-[#2e7d32] text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'
-              }`}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedMatchType === 'live' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
               🔴 LIVE ({liveMatches.length})
             </button>
-            {/* ✅ CHANGED: Tab label from UPCOMING to SCHEDULED */}
             <button
               onClick={() => setSelectedMatchType('upcoming')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedMatchType === 'upcoming'
-                  ? 'bg-[#2e7d32] text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'
-              }`}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedMatchType === 'upcoming' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
               📅 SCHEDULED ({upcomingMatches.length})
             </button>
             <button
               onClick={() => setSelectedMatchType('finished')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedMatchType === 'finished'
-                  ? 'bg-[#2e7d32] text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'
-              }`}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedMatchType === 'finished' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
               🏁 FINISHED ({finishedMatches.length})
             </button>
           </div>
 
-          {/* Match Cards */}
           <div className="space-y-4">
             {selectedMatchType === 'live' && liveMatches.length === 0 && (
               <div className="bg-[#1a1f2e] rounded-lg p-8 text-center border border-[#2a3042]">
