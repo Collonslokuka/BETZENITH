@@ -1,8 +1,17 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+// client/vite.config.js
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+
   server: {
     port: 5173,
     proxy: {
@@ -13,11 +22,11 @@ export default defineConfig({
       '/socket.io': {
         target: 'http://localhost:5000',
         ws: true,
-      }
-    }
+      },
+    },
   },
-  // This ensures environment variables are available
-  define: {
-    'import.meta.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || 'http://localhost:5000/api')
-  }
-})
+
+  // ✅ REMOVED: define block that was overriding VITE_API_URL
+  // Vite automatically exposes any VITE_* env var (from .env or Vercel)
+  // as import.meta.env.VITE_*
+});
