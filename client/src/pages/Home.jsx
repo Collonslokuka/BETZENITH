@@ -127,7 +127,8 @@ export default function Home() {
   const [liveMatches, setLiveMatches] = useState([]);
   const [upcomingMatches, setUpcomingMatches] = useState([]);
   const [finishedMatches, setFinishedMatches] = useState([]);
-  const [selectedMatchType, setSelectedMatchType] = useState('live');
+  // ✅ CHANGED: Default tab now 'upcoming' so users land on scheduled matches
+  const [selectedMatchType, setSelectedMatchType] = useState('upcoming');
 
   // Refs for horizontal scrolling
   const topLeaguesScrollRef = useRef(null);
@@ -152,17 +153,18 @@ export default function Home() {
     };
   }, []);
 
-  // Fetch matches by type (Live, Upcoming, Finished)
+  // Fetch matches by type (Live, Scheduled, Finished)
+  // ✅ CHANGED: Uses /api/ai-matches/scheduled for pre-match betting
   const fetchMatchesByType = async () => {
     try {
-      const [liveRes, upcomingRes, finishedRes] = await Promise.all([
+      const [liveRes, scheduledRes, finishedRes] = await Promise.all([
         axios.get('/api/ai-matches/live').catch(() => ({ data: { data: [] } })),
-        axios.get('/api/ai-matches/upcoming').catch(() => ({ data: { data: [] } })),
+        axios.get('/api/ai-matches/scheduled').catch(() => ({ data: { data: [] } })),
         axios.get('/api/ai-matches/finished').catch(() => ({ data: { data: [] } }))
       ]);
       
       setLiveMatches(liveRes.data.data || []);
-      setUpcomingMatches(upcomingRes.data.data || []);
+      setUpcomingMatches(scheduledRes.data.data || []);
       setFinishedMatches(finishedRes.data.data || []);
     } catch (error) {
       console.error('Error fetching matches by type:', error);
@@ -417,7 +419,7 @@ export default function Home() {
     { name: 'Favorites', icon: <FiStar className="text-[#2e7d32]" />, path: '/favorites' },
     { name: 'My Bets', icon: <FiBarChart2 className="text-[#2e7d32]" />, path: '/my-bets' },
     { name: 'Analytics', icon: <FiTrendingUp className="text-[#2e7d32]" />, path: '/analytics' },
-    { name: 'Responsible Gambling', icon: <FiShield className="text-[#2e7d32]" />, path: '/responsible-gaming' },
+    { name: 'Responsible Gambling', icon: <FiShield className="text-[#2e7d32]" />, path: '/responsible-gambling' },
   ];
 
   return (
@@ -689,7 +691,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Match Sections - Live, Upcoming, Finished */}
+        {/* Match Sections - Live, Scheduled, Finished */}
         <div className="max-w-5xl mx-auto mt-4">
           {/* Match Type Tabs */}
           <div className="flex space-x-2 mb-4 bg-[#0f1219] p-2 rounded-lg border border-[#2a3042]">
@@ -703,6 +705,7 @@ export default function Home() {
             >
               🔴 LIVE ({liveMatches.length})
             </button>
+            {/* ✅ CHANGED: Tab label from UPCOMING to SCHEDULED */}
             <button
               onClick={() => setSelectedMatchType('upcoming')}
               className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -711,7 +714,7 @@ export default function Home() {
                   : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'
               }`}
             >
-              📅 UPCOMING ({upcomingMatches.length})
+              📅 SCHEDULED ({upcomingMatches.length})
             </button>
             <button
               onClick={() => setSelectedMatchType('finished')}
@@ -739,7 +742,7 @@ export default function Home() {
             
             {selectedMatchType === 'upcoming' && upcomingMatches.length === 0 && (
               <div className="bg-[#1a1f2e] rounded-lg p-8 text-center border border-[#2a3042]">
-                <p className="text-gray-400">No upcoming matches scheduled</p>
+                <p className="text-gray-400">No scheduled matches available</p>
                 <p className="text-xs text-gray-500 mt-2">New matches will appear here soon</p>
               </div>
             )}
