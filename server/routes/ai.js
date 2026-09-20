@@ -47,7 +47,7 @@ router.get('/trends', async (req, res) => {
         // Invalid token, treat as public
       }
     }
-    
+
     const trends = await aiPredictionService.getBettingTrends(userId);
     res.json({ success: true, data: trends });
   } catch (error) {
@@ -60,23 +60,23 @@ router.get('/trends', async (req, res) => {
 router.post('/bet-slip-recommendation', protect, async (req, res) => {
   try {
     const { selections, totalOdds, totalStake } = req.body;
-    
+
     // Calculate probability
     const winProbability = (1 / totalOdds) * 100;
     const confidenceLevel = winProbability > 20 ? 'High' : winProbability > 10 ? 'Medium' : 'Low';
-    
+
     // Get user stats for personalized recommendation
     const userStats = await aiPredictionService.getUserStats(req.user._id);
-    
+
     const recommendation = {
       probability: winProbability.toFixed(1),
       confidence: confidenceLevel,
-      message: this.getRecommendationMessage(winProbability, userStats.winRate),
+      message: getRecommendationMessage(winProbability, userStats.winRate),
       riskLevel: winProbability > 20 ? 'Low' : winProbability > 10 ? 'Medium' : 'High',
-      suggestedStake: this.suggestStake(req.user.balance, winProbability),
-      userInsight: `Your personal win rate is ${userStats.winRate}%. ${this.getComparisonMessage(winProbability, userStats.winRate)}`
+      suggestedStake: suggestStake(req.user.balance, winProbability),
+      userInsight: `Your personal win rate is ${userStats.winRate}%. ${getComparisonMessage(winProbability, userStats.winRate)}`
     };
-    
+
     res.json({ success: true, data: recommendation });
   } catch (error) {
     console.error('Bet slip recommendation error:', error);
