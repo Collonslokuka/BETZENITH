@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getMyBets, getTransactions } from '../services/api';
 import { format } from 'date-fns';
-import axios from 'axios';
+import api from '../services/axios';
 
 export default function Dashboard() {
   const { user, setUser } = useAuth();
@@ -41,7 +41,7 @@ export default function Dashboard() {
 
   const fetchBalance = async () => {
     try {
-      const response = await axios.get('/api/payments/balance');
+      const response = await api.get('/payments/balance');
       if (response.data.success) {
         const data = response.data.data;
         setBalance(data.balance);
