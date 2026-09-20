@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { placeBet } from '../services/api';
 import { FiTrash2, FiShoppingCart, FiCpu, FiLock } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import axios from 'axios';
+import api from '../services/axios';
 
 const MINIMUM_STAKE = 500; // KES minimum stake
 
@@ -58,7 +58,7 @@ export default function BetSlip() {
     
     setLoadingAI(true);
     try {
-      const response = await axios.post('/api/ai/bet-slip-recommendation', {
+      const response = await api.post('/ai/bet-slip-recommendation', {
         selections: selections.map(s => ({
           odds: s.selectedMarket.odds,
           market: s.selectedMarket.name,

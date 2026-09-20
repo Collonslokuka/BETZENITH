@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBetSlip } from '../context/BetSlipContext';
 import { FiUser, FiLogOut, FiMenu, FiX, FiDollarSign, FiTrendingUp, FiSun, FiMoon } from 'react-icons/fi';
-import axios from 'axios';
+import api from '../services/axios';
 
 export default function Header() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -47,7 +47,7 @@ export default function Header() {
 
   const fetchBalance = async () => {
     try {
-      const response = await axios.get('/api/payments/balance-simple');
+      const response = await api.get('/payments/balance-simple');
       if (response.data.success) {
         setBalance(response.data.data.balance);
       }

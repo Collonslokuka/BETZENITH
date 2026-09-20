@@ -26,7 +26,7 @@ import Privacy from './pages/Privacy';
 import ResponsibleGaming from './pages/ResponsibleGaming';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
-import axios from 'axios';
+import api from './services/axios';
 
 // Import icons
 import {
@@ -73,7 +73,7 @@ const BalanceSync = ({ children }) => {
     const fetchBalance = async () => {
       if (user) {
         try {
-          const response = await axios.get('/api/payments/balance-simple');
+          const response = await api.get('/payments/balance-simple');
           if (response.data.success && response.data.data.balance !== user.balance) {
             setUser({ ...user, balance: response.data.data.balance });
           }
