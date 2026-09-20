@@ -4,7 +4,11 @@ import axios from 'axios';
 // Mock data for content, real API for auth/email
 const USE_MOCK_FOR_MATCHES = true;  // Mock matches, live scores, odds
 const USE_REAL_FOR_AUTH = true;     // Always use real auth/email
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// CHANGED: fallback points to render instead of localhost
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://betzenith-9dx1.onrender.com/api';
 
 console.log('🔧 ==================================');
 console.log(`🔧 Matches & Odds: ${USE_MOCK_FOR_MATCHES ? '📊 MOCK DATA' : '🌐 REAL API'}`);
@@ -12,13 +16,13 @@ console.log(`🔧 Auth & Email: ${USE_REAL_FOR_AUTH ? '🌐 REAL API' : '📊 MO
 console.log(`🔧 API URL: ${API_URL}`);
 console.log('🔧 ==================================');
 
-// ============ IMPORT MOCK DATA GENERATORS ============
-import { generateMockMatches, generateMockLiveMatches, generateMockUpcomingMatches } from '../hooks/useOddsData';
+// CHANGED: import mock generators from data file instead of the hook
+import { generateMockMatches, generateMockLiveMatches, generateMockUpcomingMatches } from '../data/mockMatches';
 
 // ============ REAL API CLIENT ============
 export const realApi = axios.create({
   baseURL: API_URL,
-  timeout: 10000,
+  timeout: 60000, // CHANGED: was 10000
   headers: {
     'Content-Type': 'application/json'
   }
@@ -232,9 +236,7 @@ export const apiClient = {
   },
 
   // ============ BETS (Optional: Mix real and mock) ============
-  // You can decide which ones to mock vs use real
   placeBet: async (betData) => {
-    // For testing, you might want to keep this mock
     console.log('🎲 [MOCK] Placing bet:', betData);
     await mockDelay();
     
@@ -247,14 +249,9 @@ export const apiClient = {
         createdAt: new Date().toISOString()
       }
     };
-    
-    // When ready for real:
-    // const response = await realApi.post('/bets', betData);
-    // return response.data;
   },
 
   getMyBets: async (params = {}) => {
-    // Mock for now
     console.log('🎲 [MOCK] Getting my bets');
     await mockDelay();
     
@@ -329,20 +326,17 @@ export const apiClient = {
 
   // ============ USER PROFILE (Mix - get real balance) ============
   getBalance: async () => {
-    // Use real API for balance so users see accurate amounts
     console.log('🌐 [REAL] Getting balance');
     try {
       const response = await realApi.get('/users/balance');
       return response.data;
     } catch (error) {
       console.error('❌ Balance error:', error);
-      // Fallback to mock if real API fails
       return { success: true, data: { balance: 5000 } };
     }
   },
 
   updateProfile: async (profileData) => {
-    // Real API for profile updates
     console.log('🌐 [REAL] Updating profile');
     try {
       const response = await realApi.put('/users/profile', profileData);
@@ -361,7 +355,6 @@ export const apiClient = {
       return response.data;
     } catch (error) {
       console.error('❌ Notifications error:', error);
-      // Fallback to empty array
       return { success: true, data: [] };
     }
   },
@@ -413,7 +406,6 @@ export const apiClient = {
 
   // ============ ADMIN (Mix based on needs) ============
   getAdminStats: async () => {
-    // Mock for now, can switch to real later
     console.log('👑 [MOCK] Getting admin stats');
     await mockDelay();
     
@@ -430,14 +422,12 @@ export const apiClient = {
   },
 
   getUsers: async (params = {}) => {
-    // Real API for user management
     console.log('🌐 [REAL] Getting users list');
     try {
       const response = await realApi.get('/admin/users', { params });
       return response.data;
     } catch (error) {
       console.error('❌ Get users error:', error);
-      // Fallback to mock
       return {
         success: true,
         data: Array(10).fill().map((_, i) => ({

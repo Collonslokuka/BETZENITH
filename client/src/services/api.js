@@ -1,8 +1,10 @@
 // src/services/api.js
 import axios from 'axios';
 
-// HARDCODE YOUR ACTUAL BACKEND URL
-const API_URL = 'https://betzenith-9dx1.onrender.com/api';
+// CHANGED: use env var with render fallback
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://betzenith-9dx1.onrender.com/api';
 
 console.log('🚀 API_URL is set to:', API_URL);
 
@@ -11,7 +13,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 10000
+  timeout: 60000 // CHANGED: was 10000
 });
 
 // Add token to requests
