@@ -4,10 +4,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
-import axios from 'axios';
+import api from '../services/axios';
 import toast from 'react-hot-toast';
-
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function Deposit() {
   const [amount, setAmount] = useState('');
@@ -34,9 +32,7 @@ export default function Deposit() {
 
   const fetchPaymentMethods = async () => {
     try {
-      const response = await axios.get(`${BACKEND_URL}/payments/methods`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
+      const response = await api.get('/payments/methods');
       if (response.data && response.data.success) {
         setPaymentMethods(response.data.data);
       }
@@ -76,8 +72,6 @@ export default function Deposit() {
     setLoading(true);
     
     try {
-      const token = localStorage.getItem('token');
-      
       const requestData = {
         amount: amountNum,
         paymentMethod: selectedCurrency === 'KES' ? 'till' : 'mobile',
@@ -90,15 +84,7 @@ export default function Deposit() {
         requestData.provider = selectedProvider;
       }
       
-      const response = await axios({
-        method: 'POST',
-        url: `${BACKEND_URL}/payments/deposit`,
-        data: requestData,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
+      const response = await api.post('/payments/deposit', requestData);
       
       if (response.data && response.data.success) {
         setPendingTransaction(response.data.data);
@@ -139,14 +125,7 @@ export default function Deposit() {
       attempts++;
       
       try {
-        const token = localStorage.getItem('token');
-        const response = await axios({
-          method: 'GET',
-          url: `${BACKEND_URL}/payments/check-deposit/${reference}`,
-          headers: {
-            'Authorization': token ? `Bearer ${token}` : ''
-          }
-        });
+        const response = await api.get(`/payments/check-deposit/${reference}`);
         
         if (response.data && response.data.success && response.data.data.status === 'COMPLETED') {
           clearInterval(interval);
