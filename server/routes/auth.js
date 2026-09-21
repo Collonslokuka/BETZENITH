@@ -170,7 +170,7 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     const responseMessage = 'If your email is registered, you will receive a password reset link';
-    
+
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -267,6 +267,9 @@ router.post('/reset-password', async (req, res) => {
 // @desc    Get current user
 router.get('/me', protect, async (req, res) => {
   try {
+    // DEBUG: log the balance being returned
+    console.log('📊 /me returning user balance:', req.user.balance);
+
     res.json({
       success: true,
       data: req.user
