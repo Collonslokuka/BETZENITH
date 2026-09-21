@@ -11,12 +11,17 @@ const {
 } = require('../data/leagueRegistry');
 
 // Config
-const LIVE_TICK_MS = 30 * 1000;
-const ROTATION_TICK_MS = 60 * 60 * 1000;
+const LIVE_TICK_MS = 30 * 1000;                // tick every 30s
+const ROTATION_TICK_MS = 60 * 60 * 1000;       // rotate every 1h
 const TARGET_UPCOMING = 250;
 const TARGET_LIVE = 20;
 const KEEP_FINISHED_HOURS = 24;
 const MIN_PER_LEAGUE = 2;
+
+// How many game-minutes to advance per 30s tick.
+// 2 → a 90-minute soccer match finishes in ~22 real minutes.
+// Configurable via env MATCH_MINUTES_PER_TICK
+const MINUTES_PER_TICK = parseInt(process.env.MATCH_MINUTES_PER_TICK) || 2;
 
 class AIMatchService {
   constructor() {
@@ -28,7 +33,7 @@ class AIMatchService {
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log('🤖 AI Match Service Started');
+    console.log(`🤖 AI Match Service Started (${MINUTES_PER_TICK} game-min/tick)`);
 
     this.tick().catch(err => console.error('🤖 tick error:', err.message));
     this.rotate().catch(err => console.error('🤖 rotate error:', err.message));
@@ -84,7 +89,7 @@ class AIMatchService {
     }).limit(50);
 
     for (const match of toStart) {
-      match.status = 'LIVE';
+      match.status = 'FIRST_HALF';
       match.minute = 0;
       match.score = { home: 0, away: 0 };
       match.lastUpdated = now;
@@ -105,32 +110,35 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      const timeSince = (Date.now() - (match.lastUpdated || Date.now())) / 1000;
-      const minuteInc = Math.floor(timeSince / 60);
-      if (minuteInc <= 0) continue;
-
-      const newMinute = Math.min((match.minute || 0) + minuteInc, dur.regular);
+      // Advance minute by fixed amount per tick
+      const newMinute = Math.min((match.minute || 0) + MINUTES_PER_TICK, dur.regular);
       match.minute = newMinute;
 
-      if (newMinute <= dur.halftime) match.status = 'FIRST_HALF';
+      // Period label
+      if (newMinute < dur.halftime) match.status = 'FIRST_HALF';
+      else if (newMinute === dur.halftime) match.status = 'HALFTIME';
       else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
+      else match.status = 'SECOND_HALF'; // will finish on next tick
 
+      // Score simulation
       const isBasketball = sport === 'basketball';
       const isTennis = sport === 'tennis';
 
       if (isBasketball) {
-        const homePts = Math.random() < weights.homeGoalRate / 2 ? 2 + Math.floor(Math.random() * 2) : 0;
-        const awayPts = Math.random() < weights.awayGoalRate / 2 ? 2 + Math.floor(Math.random() * 2) : 0;
+        // ~2–4 points per tick per team
+        const homePts = Math.random() < 0.7 ? 2 + Math.floor(Math.random() * 3) : 0;
+        const awayPts = Math.random() < 0.65 ? 2 + Math.floor(Math.random() * 3) : 0;
         match.score.home = Math.min((match.score.home || 0) + homePts, weights.maxScore);
         match.score.away = Math.min((match.score.away || 0) + awayPts, weights.maxScore);
       } else if (isTennis) {
-        if (Math.random() < 0.03) {
+        if (Math.random() < 0.05) {
           const homeWins = Math.random() < 0.5;
           if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 3);
           else match.score.away = Math.min((match.score.away || 0) + 1, 3);
         }
       } else {
-        if (Math.random() < weights.homeGoalRate / 10) {
+        // Goal-based: ~15% chance per tick per team
+        if (Math.random() < weights.homeGoalRate * MINUTES_PER_TICK / 30) {
           match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
           match.events = match.events || [];
           match.events.push({
@@ -139,7 +147,7 @@ class AIMatchService {
             at: new Date(),
           });
         }
-        if (Math.random() < weights.awayGoalRate / 10) {
+        if (Math.random() < weights.awayGoalRate * MINUTES_PER_TICK / 30) {
           match.score.away = Math.min((match.score.away || 0) + 1, weights.maxScore);
           match.events = match.events || [];
           match.events.push({
@@ -223,7 +231,7 @@ class AIMatchService {
     const need = TARGET_UPCOMING - upcomingCount;
     const coveredLeagues = await this.getCoveredLeagues(now, horizon);
 
-    console.log(`📅 Generating ${need} mock upcoming matches (covered: ${coveredLeagues.size})`);
+    console.log(`📅 Generating ${need} mock matches (covered leagues: ${coveredLeagues.size})`);
     await this.generateUpcomingBatch(need, coveredLeagues);
   }
 
@@ -247,7 +255,8 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      const minutesAgo = 5 + Math.floor(Math.random() * 55);
+      // Started 5–40 game-minutes ago
+      const minutesAgo = 5 + Math.floor(Math.random() * 35);
       const startsAt = new Date(now - minutesAgo * 60 * 1000);
 
       const progress = minutesAgo / dur.regular;
@@ -262,7 +271,7 @@ class AIMatchService {
         startsAt,
         date: startsAt,
         time: startsAt.toLocaleTimeString(),
-        status: minutesAgo <= dur.halftime ? 'FIRST_HALF' : 'SECOND_HALF',
+        status: minutesAgo < dur.halftime ? 'FIRST_HALF' : 'SECOND_HALF',
         minute: minutesAgo,
         score: { home: Math.max(0, baseHome), away: Math.max(0, baseAway) },
         lastUpdated: new Date(),
@@ -286,7 +295,7 @@ class AIMatchService {
     }
 
     if (pool.length === 0) {
-      console.log('📅 Mock generator: all leagues already covered, skipping');
+      console.log('📅 Mock generator: all leagues already covered');
       return;
     }
 
@@ -353,10 +362,6 @@ class AIMatchService {
   }
 }
 
-// ============================================================
-//  HELPERS
-// ============================================================
-
 function pickSportAndLeague() {
   const sports = Object.keys(LEAGUES);
   const sport = pickRandom(sports);
@@ -372,7 +377,7 @@ function pickSportAndLeague() {
 
 function buildMarkets(sport) {
   switch (sport) {
-    case 'soccer': {
+    case 'soccer':
       return [
         { name: '1', odds: +(1.4 + Math.random() * 2.6).toFixed(2), isActive: true },
         { name: 'X', odds: +(3.0 + Math.random() * 1.3).toFixed(2), isActive: true },
@@ -382,7 +387,6 @@ function buildMarkets(sport) {
         { name: 'BTTS', odds: +(1.7 + Math.random() * 0.6).toFixed(2), isActive: true },
         { name: 'BTTS No', odds: +(1.7 + Math.random() * 0.6).toFixed(2), isActive: true },
       ];
-    }
     case 'basketball':
       return [
         { name: 'Home', odds: +(1.2 + Math.random() * 2.0).toFixed(2), isActive: true },
