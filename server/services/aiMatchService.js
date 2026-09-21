@@ -1,423 +1,415 @@
-const mongoose = require('mongoose');
+// server/services/aiMatchService.js
 const Match = require('../models/Match');
-const axios = require('axios');
+const {
+  LEAGUES,
+  SPORT_DURATIONS,
+  SPORT_SCORE_WEIGHTS,
+  pickRandom,
+  pickDistinct,
+  abbreviation,
+} = require('../data/leagueRegistry');
+
+// Config
+const LIVE_TICK_MS = 30 * 1000;         // update live scores every 30s
+const ROTATION_TICK_MS = 60 * 60 * 1000; // rotate upcoming every hour
+const TARGET_UPCOMING = 250;             // total upcoming matches to keep
+const TARGET_LIVE = 20;                  // keep ~20 matches live
+const KEEP_FINISHED_HOURS = 24;          // keep finished matches for 24h
 
 class AIMatchService {
   constructor() {
-    this.updateInterval = null;
+    this.liveTimer = null;
+    this.rotationTimer = null;
     this.isRunning = false;
   }
 
-  // Start the AI match update service
   start() {
     if (this.isRunning) return;
-    
-    console.log('🤖 AI Match Service Started');
-    
-    // Update matches every 30 seconds
-    this.updateInterval = setInterval(async () => {
-      await this.updateAllMatches();
-    }, 30000);
-    
     this.isRunning = true;
+    console.log('🤖 AI Match Service Started');
+
+    // First run: seed immediately
+    this.tick().catch(err => console.error('🤖 tick error:', err.message));
+    this.rotate().catch(err => console.error('🤖 rotate error:', err.message));
+
+    this.liveTimer = setInterval(() => {
+      this.tick().catch(err => console.error('🤖 tick error:', err.message));
+    }, LIVE_TICK_MS);
+
+    this.rotationTimer = setInterval(() => {
+      this.rotate().catch(err => console.error('🤖 rotate error:', err.message));
+    }, ROTATION_TICK_MS);
   }
 
-  // Stop the service
   stop() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
+    if (this.liveTimer) clearInterval(this.liveTimer);
+    if (this.rotationTimer) clearInterval(this.rotationTimer);
+    this.liveTimer = null;
+    this.rotationTimer = null;
     this.isRunning = false;
     console.log('🤖 AI Match Service Stopped');
   }
 
-  // Main update function
-  async updateAllMatches() {
+  // ============================================================
+  //  MAIN TICKS
+  // ============================================================
+
+  async tick() {
     try {
-      const now = new Date();
-      
-      // Update live matches
+      await this.promoteScheduledToLive();
       await this.updateLiveMatches();
-      
-      // Update upcoming matches (scheduled for next 7 days)
-      await this.updateUpcomingMatches();
-      
-      // Archive finished matches
-      await this.archiveFinishedMatches();
-      
-      // Generate AI predictions for all active matches
-      await this.generateAIPredictions();
-      
-      console.log('✅ AI Match Service: All matches updated');
-    } catch (error) {
-      console.error('❌ AI Match Service Error:', error.message);
+      await this.finishOldLive();
+      await this.topUpLiveIfNeeded();
+      console.log('✅ AI Match Service: tick complete');
+    } catch (err) {
+      console.error('❌ tick error:', err.message);
     }
   }
 
-  // Update live matches
-  async updateLiveMatches() {
-    const liveMatches = await Match.find({
-      status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] }
-    });
-    
-    for (const match of liveMatches) {
-      // Update match progress
-      await this.updateMatchProgress(match);
-      
-      // Update odds based on match events
-      await this.updateDynamicOdds(match);
-      
-      // Check if match should be finished
-      if (this.shouldFinishMatch(match)) {
-        match.status = 'FINISHED';
-        match.result = this.determineResult(match);
-        match.result.isSettled = true;
-        match.result.settledAt = new Date();
-        await match.save();
-        
-        // Emit match finished event
-        const io = match.$app?.get('io');
-        if (io) {
-          io.emit('match-finished', {
-            matchId: match._id,
-            result: match.result
-          });
-        }
-      } else {
-        await match.save();
-      }
+  async rotate() {
+    try {
+      await this.archiveOldFinished();
+      await this.topUpUpcoming();
+      console.log('✅ AI Match Service: rotation complete');
+    } catch (err) {
+      console.error('❌ rotate error:', err.message);
     }
   }
 
-  // Update upcoming matches (scheduled matches)
-  async updateUpcomingMatches() {
+  // ============================================================
+  //  PROMOTE / FINISH
+  // ============================================================
+
+  async promoteScheduledToLive() {
     const now = new Date();
-    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    
-    // Find matches that are scheduled but should be started
-    const scheduledMatches = await Match.find({
+    const toStart = await Match.find({
       status: 'SCHEDULED',
-      startsAt: { $lte: now }
-    });
-    
-    for (const match of scheduledMatches) {
-      // Start the match
+      startsAt: { $lte: now },
+    }).limit(50);
+
+    for (const match of toStart) {
       match.status = 'LIVE';
       match.minute = 0;
       match.score = { home: 0, away: 0 };
+      match.lastUpdated = now;
+      match.events = [];
       await match.save();
-      
-      // Emit match started event
-      const io = match.$app?.get('io');
-      if (io) {
-        io.emit('match-started', {
-          matchId: match._id,
-          homeTeam: match.homeTeam,
-          awayTeam: match.awayTeam
-        });
+    }
+
+    if (toStart.length) console.log(`▶️  Promoted ${toStart.length} matches to LIVE`);
+  }
+
+  async updateLiveMatches() {
+    const live = await Match.find({
+      status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
+    });
+
+    for (const match of live) {
+      const sport = match.sport || 'soccer';
+      const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+      const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
+
+      const timeSince = (Date.now() - (match.lastUpdated || Date.now())) / 1000;
+      const minuteInc = Math.floor(timeSince / 60);
+      if (minuteInc <= 0) continue;
+
+      const newMinute = Math.min((match.minute || 0) + minuteInc, dur.regular);
+      match.minute = newMinute;
+
+      // Update period label
+      if (newMinute <= dur.halftime) match.status = 'FIRST_HALF';
+      else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
+
+      // Score simulation
+      const isSoccer = sport === 'soccer';
+      const isBasketball = sport === 'basketball';
+      const isTennis = sport === 'tennis';
+
+      if (isBasketball) {
+        // Basketball: ~2-3 points every minute per team
+        const homePts = Math.random() < weights.homeGoalRate / 2 ? 2 + Math.floor(Math.random() * 2) : 0;
+        const awayPts = Math.random() < weights.awayGoalRate / 2 ? 2 + Math.floor(Math.random() * 2) : 0;
+        match.score.home = Math.min((match.score.home || 0) + homePts, weights.maxScore);
+        match.score.away = Math.min((match.score.away || 0) + awayPts, weights.maxScore);
+      } else if (isTennis) {
+        // Tennis: rarely score, and scores are sets (0-3)
+        if (Math.random() < 0.03) {
+          const homeWins = Math.random() < 0.5;
+          if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 3);
+          else match.score.away = Math.min((match.score.away || 0) + 1, 3);
+        }
+      } else {
+        // Soccer, football, hockey, baseball, cricket, MMA: goal-based
+        if (Math.random() < weights.homeGoalRate / 10) {
+          match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
+          match.events = match.events || [];
+          match.events.push({
+            type: 'GOAL', minute: newMinute, team: 'home',
+            homeScore: match.score.home, awayScore: match.score.away,
+            at: new Date(),
+          });
+        }
+        if (Math.random() < weights.awayGoalRate / 10) {
+          match.score.away = Math.min((match.score.away || 0) + 1, weights.maxScore);
+          match.events = match.events || [];
+          match.events.push({
+            type: 'GOAL', minute: newMinute, team: 'away',
+            homeScore: match.score.home, awayScore: match.score.away,
+            at: new Date(),
+          });
+        }
+      }
+
+      match.lastUpdated = new Date();
+      await match.save();
+    }
+  }
+
+  async finishOldLive() {
+    const live = await Match.find({
+      status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
+    });
+
+    for (const match of live) {
+      const sport = match.sport || 'soccer';
+      const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+
+      if ((match.minute || 0) >= dur.regular) {
+        match.status = 'FINISHED';
+        match.finishedAt = new Date();
+        match.result = {
+          winner:
+            match.score.home > match.score.away ? 'HOME'
+            : match.score.away > match.score.home ? 'AWAY'
+            : 'DRAW',
+          score: match.score,
+          isSettled: true,
+          settledAt: new Date(),
+        };
+        await match.save();
+
+        const io = global.io || match.$app?.get('io');
+        if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
       }
     }
-    
-    // Check if we need more upcoming matches
+  }
+
+  async archiveOldFinished() {
+    const cutoff = new Date(Date.now() - KEEP_FINISHED_HOURS * 60 * 60 * 1000);
+    const result = await Match.deleteMany({
+      status: 'FINISHED',
+      finishedAt: { $lt: cutoff },
+    });
+    if (result.deletedCount) {
+      console.log(`🗑️  Archived ${result.deletedCount} old finished matches`);
+    }
+  }
+
+  // ============================================================
+  //  TOP-UPS
+  // ============================================================
+
+  async topUpLiveIfNeeded() {
+    const liveCount = await Match.countDocuments({
+      status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
+    });
+    if (liveCount >= TARGET_LIVE) return;
+
+    const need = TARGET_LIVE - liveCount;
+    console.log(`🔴 Only ${liveCount} live matches — generating ${need} now`);
+    await this.generateLiveBatch(need);
+  }
+
+  async topUpUpcoming() {
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
     const upcomingCount = await Match.countDocuments({
       status: 'SCHEDULED',
-      startsAt: { $gt: now }
+      startsAt: { $gt: now, $lte: horizon },
     });
-    
-    if (upcomingCount < 20) {
-      await this.generateUpcomingMatches(10);
+
+    if (upcomingCount >= TARGET_UPCOMING) {
+      console.log(`📅 Upcoming OK (${upcomingCount} in 24h window)`);
+      return;
     }
+
+    const need = TARGET_UPCOMING - upcomingCount;
+    console.log(`📅 Generating ${need} upcoming matches across next 24h`);
+    await this.generateUpcomingBatch(need);
   }
 
-  // Archive finished matches
-  async archiveFinishedMatches() {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    
-    const oldFinishedMatches = await Match.find({
-      status: 'FINISHED',
-      updatedAt: { $lt: twentyFourHoursAgo }
-    });
-    
-    // Archive or delete old matches
-    for (const match of oldFinishedMatches) {
-      // Keep for history but mark as archived
-      match.isArchived = true;
-      await match.save();
-    }
-  }
+  // ============================================================
+  //  GENERATORS
+  // ============================================================
 
-  // Update match progress (minute, score, etc.)
-  async updateMatchProgress(match) {
-    // Increase minute based on time passed
-    const timeSinceLastUpdate = (Date.now() - (match.lastUpdated || match.createdAt)) / 1000;
-    const minuteIncrement = Math.floor(timeSinceLastUpdate / 60);
-    
-    if (minuteIncrement > 0) {
-      match.minute = Math.min(match.minute + minuteIncrement, 90);
-      match.lastUpdated = new Date();
-      
-      // AI-based score update (30% chance of goal every 10 minutes)
-      if (Math.random() < 0.3 && match.minute % 10 < 2) {
-        const isHomeGoal = Math.random() < 0.55;
-        if (isHomeGoal) {
-          match.score.home += 1;
-        } else {
-          match.score.away += 1;
-        }
-        
-        // Add event
-        match.events = match.events || [];
-        match.events.push({
-          type: 'GOAL',
-          minute: match.minute,
-          team: isHomeGoal ? 'home' : 'away',
-          player: this.generateRandomPlayer(isHomeGoal ? match.homeTeam.name : match.awayTeam.name),
-          homeScore: match.score.home,
-          awayScore: match.score.away
-        });
-      }
-    }
-  }
-
-  // Update odds dynamically based on match events
-  async updateDynamicOdds(match) {
-    const oddsChanged = false;
-    
-    for (let i = 0; i < match.markets.length; i++) {
-      const market = match.markets[i];
-      let newOdds = market.odds;
-      
-      // AI odds adjustment based on score
-      if (match.score.home > match.score.away) {
-        if (market.name === '1') newOdds *= 0.92;
-        if (market.name === '2') newOdds *= 1.12;
-        if (market.name === 'X') newOdds *= 1.08;
-      } else if (match.score.away > match.score.home) {
-        if (market.name === '2') newOdds *= 0.92;
-        if (market.name === '1') newOdds *= 1.12;
-        if (market.name === 'X') newOdds *= 1.08;
-      }
-      
-      // Time factor - odds change more in last 15 minutes
-      if (match.minute > 75) {
-        newOdds *= 0.98;
-      }
-      
-      newOdds = Math.max(1.01, Math.min(1000, newOdds));
-      newOdds = Number(newOdds.toFixed(2));
-      
-      if (Math.abs(newOdds - market.odds) > 0.01) {
-        match.markets[i].odds = newOdds;
-        match.markets[i].previousOdds = market.odds;
-      }
-    }
-    
-    if (oddsChanged) {
-      // Emit odds update
-      const io = match.$app?.get('io');
-      if (io) {
-        io.to(`match-${match._id}`).emit('odds-updated', {
-          matchId: match._id,
-          markets: match.markets
-        });
-      }
-    }
-  }
-
-  // Generate upcoming matches using AI
-  async generateUpcomingMatches(count = 10) {
-    const leagues = [
-      'Premier League', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1',
-      'UEFA Champions League', 'EPL', 'NBA', 'NFL', 'MLB', 'NHL'
-    ];
-    
-    const teams = {
-      'Premier League': ['Arsenal', 'Liverpool', 'Man City', 'Chelsea', 'Man United', 'Tottenham'],
-      'La Liga': ['Real Madrid', 'Barcelona', 'Atletico Madrid', 'Sevilla'],
-      'Bundesliga': ['Bayern Munich', 'Borussia Dortmund', 'RB Leipzig'],
-      'Serie A': ['Juventus', 'Inter Milan', 'AC Milan', 'Napoli'],
-      'Ligue 1': ['PSG', 'Marseille', 'Monaco', 'Lyon'],
-      'NBA': ['Lakers', 'Warriors', 'Celtics', 'Bucks', 'Nets'],
-      'NFL': ['Chiefs', '49ers', 'Bills', 'Eagles', 'Cowboys'],
-      'MLB': ['Yankees', 'Dodgers', 'Red Sox', 'Astros'],
-      'NHL': ['Maple Leafs', 'Canadiens', 'Bruins', 'Avalanche']
-    };
-    
-    const now = new Date();
-    
+  async generateLiveBatch(count) {
+    const now = Date.now();
     for (let i = 0; i < count; i++) {
-      const randomLeague = leagues[Math.floor(Math.random() * leagues.length)];
-      const leagueTeams = teams[randomLeague] || teams['Premier League'];
-      
-      const homeTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)];
-      let awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)];
-      while (awayTeam === homeTeam) {
-        awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)];
-      }
-      
-      // Random date in next 1-7 days
-      const daysFromNow = Math.floor(Math.random() * 7) + 1;
-      const hoursFromNow = Math.floor(Math.random() * 24);
-      const minutesFromNow = Math.floor(Math.random() * 60);
-      
-      const startsAt = new Date(now);
-      startsAt.setDate(now.getDate() + daysFromNow);
-      startsAt.setHours(hoursFromNow, minutesFromNow, 0);
-      
-      // AI-generated odds
-      const homeOdds = Number((1.5 + Math.random() * 2).toFixed(2));
-      const drawOdds = Number((2.8 + Math.random() * 1.5).toFixed(2));
-      const awayOdds = Number((1.5 + Math.random() * 2).toFixed(2));
-      
-      const existingMatch = await Match.findOne({
-        homeTeam: { name: homeTeam },
-        awayTeam: { name: awayTeam },
-        startsAt: { $gte: new Date() }
+      const { sport, league } = pickSportAndLeague();
+      const [home, away] = pickDistinct(league.teams, 2);
+      const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+      const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
+
+      // Started 5–60 min ago
+      const minutesAgo = 5 + Math.floor(Math.random() * 55);
+      const startsAt = new Date(now - minutesAgo * 60 * 1000);
+
+      // Rough score based on time played
+      const progress = minutesAgo / dur.regular;
+      const baseHome = Math.floor(progress * weights.maxScore * weights.homeGoalRate * 0.4);
+      const baseAway = Math.floor(progress * weights.maxScore * weights.awayGoalRate * 0.4);
+
+      await Match.create({
+        sport,
+        league: league.name,
+        leagueId: league.id,
+        country: league.country,
+        homeTeam: { name: home, abbreviation: abbreviation(home) },
+        awayTeam: { name: away, abbreviation: abbreviation(away) },
+        startsAt,
+        date: startsAt,
+        time: startsAt.toLocaleTimeString(),
+        status: minutesAgo <= dur.halftime ? 'FIRST_HALF' : 'SECOND_HALF',
+        minute: minutesAgo,
+        score: { home: Math.max(0, baseHome), away: Math.max(0, baseAway) },
+        lastUpdated: new Date(),
+        markets: buildMarkets(sport),
+        events: [],
+        aiPrediction: null,
       });
-      
-      if (!existingMatch) {
-        await Match.create({
-          league: randomLeague,
-          homeTeam: { name: homeTeam, abbreviation: homeTeam.substring(0, 3).toUpperCase() },
-          awayTeam: { name: awayTeam, abbreviation: awayTeam.substring(0, 3).toUpperCase() },
-          startsAt: startsAt,
-          date: startsAt,
-          time: startsAt.toLocaleTimeString(),
-          status: 'SCHEDULED',
-          score: { home: 0, away: 0 },
-          minute: 0,
-          markets: [
-            { name: '1', odds: homeOdds, isActive: true },
-            { name: 'X', odds: drawOdds, isActive: true },
-            { name: '2', odds: awayOdds, isActive: true },
-            { name: 'Over 2.5', odds: 1.95, isActive: true },
-            { name: 'Under 2.5', odds: 1.95, isActive: true },
-            { name: 'BTTS', odds: 1.90, isActive: true }
-          ],
-          aiPrediction: {
-            predictedWinner: homeOdds < awayOdds ? 'HOME' : awayOdds < homeOdds ? 'AWAY' : 'DRAW',
-            confidence: Math.floor(Math.random() * 40 + 60),
-            probability: {
-              home: ((1/homeOdds) * 100).toFixed(1),
-              draw: ((1/drawOdds) * 100).toFixed(1),
-              away: ((1/awayOdds) * 100).toFixed(1)
-            },
-            insight: this.generateMatchInsight(homeTeam, awayTeam, homeOdds, awayOdds)
-          }
-        });
-      }
     }
   }
 
-  // Generate AI predictions for all active matches
+  async generateUpcomingBatch(count) {
+    const now = Date.now();
+
+    for (let i = 0; i < count; i++) {
+      const { sport, league } = pickSportAndLeague();
+      const [home, away] = pickDistinct(league.teams, 2);
+
+      // Random time in the next 24h, spread evenly
+      const offsetMinutes = Math.floor((i / count) * 24 * 60) + Math.floor(Math.random() * 30);
+      const startsAt = new Date(now + offsetMinutes * 60 * 1000);
+
+      // Avoid duplicate pairings in the same day
+      const dup = await Match.findOne({
+        homeTeam: { name: home },
+        awayTeam: { name: away },
+        startsAt: { $gte: new Date(startsAt.getTime() - 6 * 3600 * 1000), $lte: new Date(startsAt.getTime() + 6 * 3600 * 1000) },
+      });
+      if (dup) continue;
+
+      await Match.create({
+        sport,
+        league: league.name,
+        leagueId: league.id,
+        country: league.country,
+        homeTeam: { name: home, abbreviation: abbreviation(home) },
+        awayTeam: { name: away, abbreviation: abbreviation(away) },
+        startsAt,
+        date: startsAt,
+        time: startsAt.toLocaleTimeString(),
+        status: 'SCHEDULED',
+        minute: 0,
+        score: { home: 0, away: 0 },
+        markets: buildMarkets(sport),
+        aiPrediction: null,
+        events: [],
+      });
+    }
+  }
+
+  // ============================================================
+  //  AI PREDICTION
+  // ============================================================
+
   async generateAIPredictions() {
-    const matches = await Match.find({
-      status: { $in: ['SCHEDULED', 'LIVE'] }
-    });
-    
+    const matches = await Match.find({ status: { $in: ['SCHEDULED', 'LIVE'] } });
     for (const match of matches) {
-      const prediction = await this.calculateAIPrediction(match);
-      match.aiPrediction = prediction;
+      match.aiPrediction = await this.calculateAIPrediction(match);
       await match.save();
     }
   }
 
-  // Calculate AI prediction for a match
   async calculateAIPrediction(match) {
-    const homeOdds = match.markets.find(m => m.name === '1')?.odds || 2.0;
-    const drawOdds = match.markets.find(m => m.name === 'X')?.odds || 3.4;
-    const awayOdds = match.markets.find(m => m.name === '2')?.odds || 2.0;
-    
+    const homeOdds = match.markets?.find(m => m.name === '1')?.odds || 2.0;
+    const drawOdds = match.markets?.find(m => m.name === 'X')?.odds || 3.4;
+    const awayOdds = match.markets?.find(m => m.name === '2')?.odds || 2.0;
+
     const homeProb = (1 / homeOdds) * 100;
     const drawProb = (1 / drawOdds) * 100;
     const awayProb = (1 / awayOdds) * 100;
-    
-    // Normalize probabilities
     const total = homeProb + drawProb + awayProb;
-    const normalizedHome = (homeProb / total) * 100;
-    const normalizedDraw = (drawProb / total) * 100;
-    const normalizedAway = (awayProb / total) * 100;
-    
-    let predictedWinner = 'DRAW';
-    let confidence = 0;
-    
-    if (normalizedHome > normalizedAway && normalizedHome > normalizedDraw) {
-      predictedWinner = 'HOME';
-      confidence = normalizedHome;
-    } else if (normalizedAway > normalizedHome && normalizedAway > normalizedDraw) {
-      predictedWinner = 'AWAY';
-      confidence = normalizedAway;
-    } else {
-      predictedWinner = 'DRAW';
-      confidence = normalizedDraw;
-    }
-    
+
     return {
-      predictedWinner,
-      confidence: Math.floor(confidence),
+      predictedWinner: homeOdds < awayOdds ? 'HOME' : awayOdds < homeOdds ? 'AWAY' : 'DRAW',
+      confidence: Math.floor(Math.random() * 30 + 55),
       probability: {
-        home: normalizedHome.toFixed(1),
-        draw: normalizedDraw.toFixed(1),
-        away: normalizedAway.toFixed(1)
+        home: ((homeProb / total) * 100).toFixed(1),
+        draw: ((drawProb / total) * 100).toFixed(1),
+        away: ((awayProb / total) * 100).toFixed(1),
       },
-      insight: this.generateMatchInsight(match.homeTeam.name, match.awayTeam.name, homeOdds, awayOdds),
-      recommendedBet: this.getRecommendedBet(normalizedHome, normalizedDraw, normalizedAway, homeOdds, awayOdds),
-      riskLevel: this.calculateRiskLevel(homeOdds, awayOdds)
+      insight: `${homeOdds < awayOdds ? match.homeTeam.name : match.awayTeam.name} are favored in this ${match.league} fixture.`,
     };
   }
+}
 
-  // Generate match insight
-  generateMatchInsight(homeTeam, awayTeam, homeOdds, awayOdds) {
-    if (homeOdds < awayOdds) {
-      return `${homeTeam} are favored to win with odds of ${homeOdds}. They have strong home advantage.`;
-    } else if (awayOdds < homeOdds) {
-      return `${awayTeam} are favored to win with odds of ${awayOdds}. They have been in good form.`;
-    } else {
-      return `This is a closely contested match. Both teams have similar winning probabilities.`;
-    }
-  }
+// ============================================================
+//  HELPERS
+// ============================================================
 
-  // Get recommended bet
-  getRecommendedBet(homeProb, drawProb, awayProb, homeOdds, awayOdds) {
-    if (homeProb > 40 && homeOdds > 1.8) {
-      return { type: 'HOME WIN', reason: 'Good value on home team at current odds' };
-    } else if (awayProb > 40 && awayOdds > 1.8) {
-      return { type: 'AWAY WIN', reason: 'Away team offers good value' };
-    } else if (drawProb > 30) {
-      return { type: 'DRAW', reason: 'Draw is a strong possibility in this matchup' };
-    }
-    return { type: 'OVER 2.5', reason: 'Both teams capable of scoring' };
+function pickSportAndLeague() {
+  const sports = Object.keys(LEAGUES);
+  const sport = pickRandom(sports);
+  const leagues = LEAGUES[sport];
+  // Bias toward higher-priority leagues by repeating them in the pool
+  const weighted = [];
+  for (const l of leagues) {
+    const weight = l.priority === 1 ? 4 : l.priority === 2 ? 2 : 1;
+    for (let i = 0; i < weight; i++) weighted.push(l);
   }
+  const league = pickRandom(weighted);
+  return { sport, league };
+}
 
-  // Calculate risk level
-  calculateRiskLevel(homeOdds, awayOdds) {
-    const diff = Math.abs(homeOdds - awayOdds);
-    if (diff < 0.3) return 'High';
-    if (diff < 0.8) return 'Medium';
-    return 'Low';
-  }
+function buildMarkets(sport) {
+  const base = [
+    { name: '1', odds: +(1.5 + Math.random() * 2).toFixed(2), isActive: true },
+    { name: 'X', odds: +(2.8 + Math.random() * 1.5).toFixed(2), isActive: true },
+    { name: '2', odds: +(1.5 + Math.random() * 2).toFixed(2), isActive: true },
+  ];
 
-  // Determine if match should be finished
-  shouldFinishMatch(match) {
-    return match.minute >= 90 || (match.minute >= 45 && match.status === 'HALFTIME' && Math.random() < 0.05);
-  }
+  const extras = {
+    soccer: [
+      { name: 'Over 2.5', odds: 1.95, isActive: true },
+      { name: 'Under 2.5', odds: 1.95, isActive: true },
+      { name: 'BTTS', odds: 1.90, isActive: true },
+    ],
+    basketball: [
+      { name: 'Over 210.5', odds: 1.90, isActive: true },
+      { name: 'Under 210.5', odds: 1.90, isActive: true },
+    ],
+    'american-football': [
+      { name: 'Over 45.5', odds: 1.90, isActive: true },
+      { name: 'Under 45.5', odds: 1.90, isActive: true },
+    ],
+    baseball: [
+      { name: 'Over 8.5', odds: 1.90, isActive: true },
+      { name: 'Under 8.5', odds: 1.90, isActive: true },
+    ],
+    'ice-hockey': [
+      { name: 'Over 5.5', odds: 1.90, isActive: true },
+      { name: 'Under 5.5', odds: 1.90, isActive: true },
+    ],
+    tennis: [
+      { name: 'Straight Sets', odds: 2.10, isActive: true },
+    ],
+    cricket: [],
+    mma: [],
+  };
 
-  // Determine match result
-  determineResult(match) {
-    if (match.score.home > match.score.away) return { winner: 'HOME', score: match.score };
-    if (match.score.away > match.score.home) return { winner: 'AWAY', score: match.score };
-    return { winner: 'DRAW', score: match.score };
-  }
-
-  // Generate random player name
-  generateRandomPlayer(teamName) {
-    const players = [
-      'Player 1', 'Star Player', 'Captain', 'Striker', 'Midfielder',
-      'Defender', 'Winger', 'Forward', 'Playmaker'
-    ];
-    return players[Math.floor(Math.random() * players.length)];
-  }
+  return [...base, ...(extras[sport] || [])];
 }
 
 module.exports = new AIMatchService();

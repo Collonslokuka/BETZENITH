@@ -109,6 +109,105 @@ function formatDateLabel(dateStr) {
 }
 
 // ============================================================
+//  GROUPED / FILTERED VIEWS — for sport and league tabs
+// ============================================================
+
+// @route   GET /api/ai-matches/by-sport
+// @desc    Matches grouped by sport
+// @access  Public
+router.get('/by-sport', async (req, res) => {
+  try {
+    const matches = await Match.find({
+      status: { $in: ['SCHEDULED', 'LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
+    }).sort({ startsAt: 1 });
+
+    const grouped = matches.reduce((acc, m) => {
+      const sport = m.sport || 'soccer';
+      if (!acc[sport]) acc[sport] = { sport, count: 0, matches: [] };
+      acc[sport].count++;
+      acc[sport].matches.push(m);
+      return acc;
+    }, {});
+
+    res.json({ success: true, data: Object.values(grouped) });
+  } catch (error) {
+    console.error('Error grouping by sport:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// @route   GET /api/ai-matches/by-league
+// @desc    Matches grouped by league, within optional sport filter
+// @access  Public
+router.get('/by-league', async (req, res) => {
+  try {
+    const { sport } = req.query;
+    const query = {
+      status: { $in: ['SCHEDULED', 'LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
+    };
+    if (sport) query.sport = sport;
+
+    const matches = await Match.find(query).sort({ startsAt: 1 });
+
+    const grouped = matches.reduce((acc, m) => {
+      const key = `${m.sport || 'soccer'}::${m.league}`;
+      if (!acc[key]) {
+        acc[key] = {
+          sport: m.sport || 'soccer',
+          league: m.league,
+          leagueId: m.leagueId,
+          country: m.country,
+          count: 0,
+          matches: [],
+        };
+      }
+      acc[key].count++;
+      acc[key].matches.push(m);
+      return acc;
+    }, {});
+
+    res.json({ success: true, data: Object.values(grouped) });
+  } catch (error) {
+    console.error('Error grouping by league:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// @route   GET /api/ai-matches/next-24h
+// @desc    All matches in the next 24 hours, grouped by hour
+// @access  Public
+router.get('/next-24h', async (req, res) => {
+  try {
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const matches = await Match.find({
+      status: { $in: ['SCHEDULED', 'LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
+      startsAt: { $gte: now, $lte: horizon },
+    }).sort({ startsAt: 1 });
+
+    const grouped = matches.reduce((acc, m) => {
+      const hour = new Date(m.startsAt);
+      hour.setMinutes(0, 0, 0);
+      const key = hour.toISOString();
+      if (!acc[key]) acc[key] = { hour: key, count: 0, matches: [] };
+      acc[key].count++;
+      acc[key].matches.push(m);
+      return acc;
+    }, {});
+
+    res.json({
+      success: true,
+      totalMatches: matches.length,
+      data: Object.values(grouped),
+    });
+  } catch (error) {
+    console.error('Error fetching next-24h matches:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================================
 //  EXISTING ROUTES
 // ============================================================
 
@@ -288,6 +387,10 @@ router.get('/stats/:matchId', async (req, res) => {
   }
 });
 
+// ============================================================
+//  ADMIN / DEV
+// ============================================================
+
 // @route   POST /api/ai-matches/admin/start-service
 router.post('/admin/start-service', async (req, res) => {
   try {
@@ -306,6 +409,24 @@ router.post('/admin/stop-service', async (req, res) => {
     res.json({ success: true, message: 'AI Match Service stopped' });
   } catch (error) {
     console.error('Error stopping service:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// @route   POST /api/ai-matches/admin/seed-now
+// @desc    Force seed upcoming + live matches (dev only)
+// @access  Public
+router.post('/admin/seed-now', async (req, res) => {
+  try {
+    await aiMatchService.rotate();
+    await aiMatchService.tick();
+    const scheduled = await Match.countDocuments({ status: 'SCHEDULED' });
+    const live = await Match.countDocuments({
+      status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
+    });
+    res.json({ success: true, scheduled, live });
+  } catch (error) {
+    console.error('Error seeding matches:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
