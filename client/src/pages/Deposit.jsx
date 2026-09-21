@@ -15,7 +15,7 @@ export default function Deposit() {
   const [selectedProvider, setSelectedProvider] = useState('mtn');
   const [paymentMethods, setPaymentMethods] = useState(null);
   const [pendingTransaction, setPendingTransaction] = useState(null);
-  
+
   const { user, setUser } = useAuth();
   const { currencies, formatAmount, convertAmount } = useCurrency();
   const navigate = useNavigate();
@@ -55,22 +55,22 @@ export default function Deposit() {
 
   const handleDeposit = async (e) => {
     e.preventDefault();
-    
+
     const amountNum = parseFloat(amount);
     const minDeposit = getCurrentMinDeposit();
-    
+
     if (isNaN(amountNum) || amountNum < minDeposit) {
       toast.error(`Minimum deposit is ${getCurrencySymbol()} ${minDeposit.toLocaleString()}`);
       return;
     }
-    
+
     if (!phoneNumber) {
       toast.error('Please enter your phone number');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       const requestData = {
         amount: amountNum,
@@ -78,17 +78,17 @@ export default function Deposit() {
         currency: selectedCurrency,
         phoneNumber
       };
-      
+
       // Add provider for Uganda
       if (selectedCurrency === 'UGX') {
         requestData.provider = selectedProvider;
       }
-      
+
       const response = await api.post('/payments/deposit', requestData);
-      
+
       if (response.data && response.data.success) {
         setPendingTransaction(response.data.data);
-        
+
         if (selectedCurrency === 'KES') {
           toast.success('✅ Payment initiated! Check your phone for the M-Pesa prompt.', { duration: 5000 });
           toast('📱 Enter your M-Pesa PIN on your phone to complete the payment.', { duration: 8000, icon: '📱' });
@@ -108,7 +108,7 @@ export default function Deposit() {
       } else {
         toast.error(response.data?.message || 'Failed to initiate deposit');
       }
-      
+
     } catch (error) {
       console.error('Deposit error:', error);
       toast.error(error.response?.data?.message || 'Failed to initiate deposit');
@@ -119,22 +119,22 @@ export default function Deposit() {
 
   const startPollingForConfirmation = (reference) => {
     let attempts = 0;
-    const maxAttempts = 60; // 5 minutes
-    
+    const maxAttempts = 30; // 30 * 10s = 5 minutes
+
     const interval = setInterval(async () => {
       attempts++;
-      
+
       try {
         const response = await api.get(`/payments/check-deposit/${reference}`);
-        
+
         if (response.data && response.data.success && response.data.data.status === 'COMPLETED') {
           clearInterval(interval);
           toast.success('✅ Deposit confirmed! Your balance has been updated.');
-          
+
           window.dispatchEvent(new CustomEvent('balance-update', {
             detail: { newBalance: (user?.balance || 0) + parseFloat(amount) }
           }));
-          
+
           setPendingTransaction(null);
           setAmount('');
           setPhoneNumber('');
@@ -144,9 +144,13 @@ export default function Deposit() {
           toast('⏳ Still waiting for confirmation. Check your M-Pesa messages.', { icon: '⏳' });
         }
       } catch (error) {
-        console.error('Error checking deposit status:', error);
+        if (error.response?.status === 429) {
+          console.warn('Rate limited, slowing poll...');
+        } else {
+          console.error('Error checking deposit status:', error);
+        }
       }
-    }, 5000);
+    }, 10000); // 10 seconds
   };
 
   // Get phone number placeholder based on currency
@@ -167,14 +171,14 @@ export default function Deposit() {
     <div className="max-w-md mx-auto">
       <div className="bg-[#1a1f2e] rounded-lg p-8">
         <h1 className="text-2xl font-bold text-white mb-6">Deposit Funds</h1>
-        
+
         <div className="mb-6 p-4 bg-[#2a2f3f] rounded-lg">
           <p className="text-gray-400 text-sm mb-2">Your Balance</p>
           <p className="text-2xl font-bold text-[#00cc88]">
             {getCurrencySymbol()} {user?.balance?.toLocaleString() || 0}
           </p>
         </div>
-        
+
         {/* Currency Selector */}
         <div className="mb-4">
           <label className="block text-gray-400 mb-2 text-sm">Select Currency</label>
@@ -199,7 +203,7 @@ export default function Deposit() {
             ))}
           </div>
         </div>
-        
+
         {/* Provider selector for Uganda */}
         {selectedCurrency === 'UGX' && (
           <div className="mb-4">
@@ -230,7 +234,7 @@ export default function Deposit() {
             </div>
           </div>
         )}
-        
+
         <div className="mb-4">
           <label className="block text-gray-400 mb-2 text-sm">Phone Number</label>
           <input
@@ -243,7 +247,7 @@ export default function Deposit() {
           />
           <p className="text-xs text-gray-500 mt-1">{getPhoneHint()}</p>
         </div>
-        
+
         <div className="mb-4">
           <label className="block text-gray-400 mb-2 text-sm">Amount ({getCurrencySymbol()})</label>
           <input
@@ -256,7 +260,7 @@ export default function Deposit() {
             required
           />
         </div>
-        
+
         <div className="mb-6">
           <p className="text-gray-400 mb-2 text-sm">Quick Select</p>
           <div className="grid grid-cols-4 gap-2">
@@ -272,7 +276,7 @@ export default function Deposit() {
             ))}
           </div>
         </div>
-        
+
         {/* Payment Instructions */}
         {selectedCurrency === 'KES' && (
           <div className="mb-6 p-4 bg-[#2e7d32]/10 rounded-lg border border-[#2e7d32]/30">
@@ -290,7 +294,7 @@ export default function Deposit() {
             </div>
           </div>
         )}
-        
+
         {selectedCurrency === 'UGX' && (
           <div className="mb-6 p-4 bg-[#2e7d32]/10 rounded-lg border border-[#2e7d32]/30">
             <div className="flex items-center mb-3">
@@ -312,7 +316,7 @@ export default function Deposit() {
             </div>
           </div>
         )}
-        
+
         <button
           onClick={handleDeposit}
           disabled={loading || !amount || !phoneNumber}
@@ -320,7 +324,7 @@ export default function Deposit() {
         >
           {loading ? 'Processing...' : selectedCurrency === 'KES' ? 'Pay with M-Pesa' : 'Pay with Mobile Money'}
         </button>
-        
+
         {pendingTransaction && (
           <div className="mt-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/30">
             <p className="text-blue-400 text-sm text-center">
@@ -329,7 +333,7 @@ export default function Deposit() {
             </p>
           </div>
         )}
-        
+
         <p className="text-center text-xs text-gray-500 mt-4">
           All transactions are secure and encrypted
         </p>
