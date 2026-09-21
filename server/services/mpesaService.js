@@ -7,7 +7,10 @@ class MpesaService {
     this.consumerKey = MPESA_CONFIG.consumerKey;
     this.consumerSecret = MPESA_CONFIG.consumerSecret;
     this.passkey = MPESA_CONFIG.passkey;
-    this.shortcode = MPESA_CONFIG.shortcode;
+    // Store Number → used for STK Push
+    this.storeNumber = process.env.MPESA_STORE_NUMBER || MPESA_CONFIG.shortcode;
+    // Till Number → display only
+    this.tillNumber = process.env.MPESA_TILL_NUMBER || '8595330';
     this.callbackUrl = MPESA_CONFIG.callbackUrl;
     this.baseUrl = MPESA_CONFIG.baseUrl;
   }
@@ -28,7 +31,6 @@ class MpesaService {
   async initiateSTKPush(phoneNumber, amount, accountReference) {
     const token = await this.getAccessToken();
 
-    // Timestamp must be YYYYMMDDHHmmss in Nairobi time
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const timestamp =
@@ -39,29 +41,31 @@ class MpesaService {
       pad(now.getMinutes()) +
       pad(now.getSeconds());
 
+    // Password built from Store Number + Passkey + Timestamp
     const password = Buffer.from(
-      `${this.shortcode}${this.passkey}${timestamp}`
+      `${this.storeNumber}${this.passkey}${timestamp}`
     ).toString('base64');
 
-    // Normalize phone: strip non-digits, ensure 2547XXXXXXXX or 2541XXXXXXXX
     let phone = String(phoneNumber).replace(/\D/g, '');
     if (phone.startsWith('0')) phone = '254' + phone.slice(1);
     if (phone.startsWith('7') || phone.startsWith('1')) phone = '254' + phone;
 
     const body = {
-      BusinessShortCode: this.shortcode,
+      BusinessShortCode: this.storeNumber,
       Password: password,
       Timestamp: timestamp,
-      // Till number → Buy Goods
       TransactionType: 'CustomerBuyGoodsOnline',
       Amount: Math.round(Number(amount)),
       PartyA: phone,
-      PartyB: this.shortcode,
+      PartyB: this.storeNumber,
       PhoneNumber: phone,
       CallBackURL: this.callbackUrl,
       AccountReference: accountReference,
       TransactionDesc: 'BetFusion Deposit',
     };
+
+    console.log('📤 STK Push using Store Number:', this.storeNumber);
+    console.log('📤 Till Number (display):', this.tillNumber);
 
     const url = `${this.baseUrl}/mpesa/stkpush/v1/processrequest`;
     const response = await axios.post(url, body, {

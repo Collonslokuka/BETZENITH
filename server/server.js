@@ -315,6 +315,23 @@ app.use('/api/ai-matches', require('./routes/aiMatches'));
 const aiMatchService = require('./services/aiMatchService');
 aiMatchService.start();
 
+// ============ TEMPORARY ADMIN RESET (remove after use) ============
+app.post('/api/admin/reset-all-balances', async (req, res) => {
+  try {
+    const { secret } = req.body;
+    if (secret !== 'reset-now-4656460') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    const User = require('./models/User');
+    const result = await User.updateMany({}, { balance: 0 });
+    console.log(`✅ Reset ${result.modifiedCount} users to balance 0`);
+    res.json({ success: true, reset: result.modifiedCount });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// ============ END TEMPORARY ADMIN RESET ============
+
 // ============ DEBUG ROUTES ============
 app.get('/debug-routes', (req, res) => {
   try {
