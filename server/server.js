@@ -41,25 +41,16 @@ app.use(helmet({
   }
 }));
 
-// ============ RATE LIMITING ============
-const limiter = rateLimit({
-  windowMs: (process.env.RATE_LIMIT_WINDOW || 15) * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api', limiter);
-
-
 // ✅ Trust proxy so express-rate-limit works correctly behind Render/Vercel
 app.set('trust proxy', 1);
 
-
 // ============ CORS - UPDATED FOR YOUR DEPLOYMENT ============
+// MUST RUN BEFORE RATE LIMITER, so 429 responses still carry CORS headers
 const allowedOrigins = [
   // Local development
   'http://localhost:5173',
   'http://localhost:3000',
-  
+
   // Your Vercel deployments (free URLs)
   'https://betfusion.vercel.app',
   'https://betzenith.vercel.app',
@@ -67,14 +58,14 @@ const allowedOrigins = [
   'https://betzenith-u8ji.vercel.app',
   'https://betzenith-odux.vercel.app',
   'https://betzenith-git-main-mrmangoyes-projects.vercel.app',
-  
+
   // Your custom domain (if you buy one later)
   'https://betznith.com',
   'https://www.betznith.com',
-  
+
   // Render backend (for testing)
   'https://betfusion-api.onrender.com',
-  
+
   // From environment variable (for flexibility)
   process.env.CLIENT_URL
 ].filter(Boolean); // Remove any undefined values
@@ -84,25 +75,25 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     // Check if origin is allowed
     if (allowedOrigins.indexOf(origin) !== -1) {
       console.log('✅ CORS allowed (exact match):', origin);
       return callback(null, true);
     }
-    
+
     // Special: Allow any vercel.app subdomain dynamically
     if (origin.endsWith('.vercel.app')) {
       console.log('✅ CORS allowed (Vercel subdomain):', origin);
       return callback(null, true);
     }
-    
+
     // Special: Allow any onrender.com subdomain dynamically
     if (origin.endsWith('.onrender.com')) {
       console.log('✅ CORS allowed (Render subdomain):', origin);
       return callback(null, true);
     }
-    
+
     // Block other origins
     console.log('❌ CORS blocked for origin:', origin);
     return callback(new Error('CORS policy does not allow this origin'), false);
@@ -115,7 +106,7 @@ app.use(cors({
 // This ensures CORS headers are set even if the main CORS middleware fails
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  
+
   // Allow any vercel.app or onrender.com origin
   if (origin && (origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com') || allowedOrigins.includes(origin))) {
     res.header('Access-Control-Allow-Origin', origin);
@@ -123,14 +114,36 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   }
-  
+
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
-  
+
   next();
 });
+
+// ============ RATE LIMITING (AFTER CORS) ============
+const limiter = rateLimit({
+  windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW) || 15) * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Skip preflight so OPTIONS never counts against the limit
+  skip: (req) => req.method === 'OPTIONS',
+  handler: (req, res) => {
+    // Return CORS headers on 429 so the browser doesn't mask it as a CORS error
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    }
+    res.status(429).json({ success: false, message: 'Too many requests, please try again later.' });
+  }
+});
+app.use('/api', limiter);
 
 // ============ MIDDLEWARE ============
 app.use(compression());
@@ -151,7 +164,7 @@ const matchSubscribers = new Map();
 
 io.on('connection', (socket) => {
   console.log('🔌 New client connected:', socket.id);
-  
+
   // User authentication
   socket.on('authenticate', (userId) => {
     socket.join(`user-${userId}`);
@@ -159,24 +172,24 @@ io.on('connection', (socket) => {
     io.emit('user-online', { userId, online: onlineUsers.size });
     console.log(`👤 User ${userId} authenticated`);
   });
-  
+
   // Subscribe to match updates
   socket.on('subscribe-to-match', (matchId) => {
     socket.join(`match-${matchId}`);
-    
+
     // Track subscribers
     if (!matchSubscribers.has(matchId)) {
       matchSubscribers.set(matchId, new Set());
     }
     matchSubscribers.get(matchId).add(socket.id);
-    
+
     console.log(`📊 Socket ${socket.id} subscribed to match ${matchId} (${matchSubscribers.get(matchId).size} total)`);
   });
-  
+
   // Unsubscribe from match
   socket.on('unsubscribe-from-match', (matchId) => {
     socket.leave(`match-${matchId}`);
-    
+
     if (matchSubscribers.has(matchId)) {
       matchSubscribers.get(matchId).delete(socket.id);
       if (matchSubscribers.get(matchId).size === 0) {
@@ -184,7 +197,7 @@ io.on('connection', (socket) => {
       }
     }
   });
-  
+
   // Get all live matches - FOR THE LIVE TICKER
   socket.on('get-live-matches', async () => {
     try {
@@ -192,19 +205,19 @@ io.on('connection', (socket) => {
       const liveMatches = await Match.find({
         status: { $in: ['LIVE', 'HALFTIME'] }
       }).select('homeTeam awayTeam score minute status league');
-      
+
       socket.emit('live-matches-list', liveMatches);
       console.log(`📋 Sent ${liveMatches.length} live matches to client ${socket.id}`);
     } catch (error) {
       console.error('❌ Error fetching live matches:', error);
     }
   });
-  
+
   // Join bet slip room (for cashout updates)
   socket.on('join-bet-slip', (betId) => {
     socket.join(`bet-${betId}`);
   });
-  
+
   // Handle disconnection
   socket.on('disconnect', () => {
     // Remove from online users
@@ -215,7 +228,7 @@ io.on('connection', (socket) => {
         break;
       }
     }
-    
+
     // Remove from match subscribers
     for (const [matchId, subscribers] of matchSubscribers.entries()) {
       if (subscribers.has(socket.id)) {
@@ -225,7 +238,7 @@ io.on('connection', (socket) => {
         }
       }
     }
-    
+
     console.log('❌ Client disconnected:', socket.id);
   });
 });
@@ -239,7 +252,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 })
   .then(() => {
     console.log('✅ MongoDB connected successfully');
-    
+
     // ============ START REAL-TIME UPDATES ============
     try {
       const scheduler = require('./services/UpdateScheduler');
@@ -248,10 +261,10 @@ mongoose.connect(process.env.MONGODB_URI, {
     } catch (error) {
       console.log('⚠️ Update scheduler not available yet');
     }
-    
+
     // Check if we have matches, if not fetch from API
     const Match = require('./models/Match');
-    
+
     Match.countDocuments().then(async (count) => {
       if (count === 0) {
         console.log('📋 No matches found, fetching from API...');
@@ -306,10 +319,10 @@ aiMatchService.start();
 app.get('/debug-routes', (req, res) => {
   try {
     const routes = [];
-    
+
     function extractRoutes(stack, basePath = '') {
       if (!stack || !stack.forEach) return;
-      
+
       stack.forEach(layer => {
         if (layer.route) {
           // This is a route
@@ -321,7 +334,7 @@ app.get('/debug-routes', (req, res) => {
         } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
           // This is a router middleware (like our auth router)
           let routerPath = basePath;
-          
+
           // Try to get the base path for this router
           if (layer.regexp) {
             let pathStr = layer.regexp.toString();
@@ -333,18 +346,18 @@ app.get('/debug-routes', (req, res) => {
               routerPath = basePath;
             }
           }
-          
+
           // Extract routes from this router
           extractRoutes(layer.handle.stack, routerPath);
         }
       });
     }
-    
+
     extractRoutes(app._router.stack);
-    
+
     // Filter to show only auth-related routes
     const authRoutes = routes.filter(r => r.path.includes('auth'));
-    
+
     res.json({
       success: true,
       totalRoutes: routes.length,
@@ -352,10 +365,10 @@ app.get('/debug-routes', (req, res) => {
       allRoutes: routes // Show all routes
     });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       error: error.message,
-      stack: error.stack 
+      stack: error.stack
     });
   }
 });
@@ -384,13 +397,13 @@ app.use((req, res) => {
 // ============ ERROR HANDLER ============
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.stack);
-  
+
   const status = err.status || 500;
   const message = err.message || 'Internal server error';
-  
+
   // Don't leak error details in production
   const error = process.env.NODE_ENV === 'production' ? {} : { stack: err.stack };
-  
+
   res.status(status).json({
     success: false,
     message,
