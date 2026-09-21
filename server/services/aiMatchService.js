@@ -120,26 +120,21 @@ class AIMatchService {
       if (newMinute <= dur.halftime) match.status = 'FIRST_HALF';
       else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
 
-      // Score simulation
-      const isSoccer = sport === 'soccer';
       const isBasketball = sport === 'basketball';
       const isTennis = sport === 'tennis';
 
       if (isBasketball) {
-        // Basketball: ~2-3 points every minute per team
         const homePts = Math.random() < weights.homeGoalRate / 2 ? 2 + Math.floor(Math.random() * 2) : 0;
         const awayPts = Math.random() < weights.awayGoalRate / 2 ? 2 + Math.floor(Math.random() * 2) : 0;
         match.score.home = Math.min((match.score.home || 0) + homePts, weights.maxScore);
         match.score.away = Math.min((match.score.away || 0) + awayPts, weights.maxScore);
       } else if (isTennis) {
-        // Tennis: rarely score, and scores are sets (0-3)
         if (Math.random() < 0.03) {
           const homeWins = Math.random() < 0.5;
           if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 3);
           else match.score.away = Math.min((match.score.away || 0) + 1, 3);
         }
       } else {
-        // Soccer, football, hockey, baseball, cricket, MMA: goal-based
         if (Math.random() < weights.homeGoalRate / 10) {
           match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
           match.events = match.events || [];
@@ -188,7 +183,7 @@ class AIMatchService {
         };
         await match.save();
 
-        const io = global.io || match.$app?.get('io');
+        const io = global.io;
         if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
       }
     }
@@ -251,11 +246,9 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      // Started 5–60 min ago
       const minutesAgo = 5 + Math.floor(Math.random() * 55);
       const startsAt = new Date(now - minutesAgo * 60 * 1000);
 
-      // Rough score based on time played
       const progress = minutesAgo / dur.regular;
       const baseHome = Math.floor(progress * weights.maxScore * weights.homeGoalRate * 0.4);
       const baseAway = Math.floor(progress * weights.maxScore * weights.awayGoalRate * 0.4);
@@ -263,8 +256,6 @@ class AIMatchService {
       await Match.create({
         sport,
         league: league.name,
-        leagueId: league.id,
-        country: league.country,
         homeTeam: { name: home, abbreviation: abbreviation(home) },
         awayTeam: { name: away, abbreviation: abbreviation(away) },
         startsAt,
@@ -288,23 +279,22 @@ class AIMatchService {
       const { sport, league } = pickSportAndLeague();
       const [home, away] = pickDistinct(league.teams, 2);
 
-      // Random time in the next 24h, spread evenly
       const offsetMinutes = Math.floor((i / count) * 24 * 60) + Math.floor(Math.random() * 30);
       const startsAt = new Date(now + offsetMinutes * 60 * 1000);
 
-      // Avoid duplicate pairings in the same day
       const dup = await Match.findOne({
         homeTeam: { name: home },
         awayTeam: { name: away },
-        startsAt: { $gte: new Date(startsAt.getTime() - 6 * 3600 * 1000), $lte: new Date(startsAt.getTime() + 6 * 3600 * 1000) },
+        startsAt: {
+          $gte: new Date(startsAt.getTime() - 6 * 3600 * 1000),
+          $lte: new Date(startsAt.getTime() + 6 * 3600 * 1000),
+        },
       });
       if (dup) continue;
 
       await Match.create({
         sport,
         league: league.name,
-        leagueId: league.id,
-        country: league.country,
         homeTeam: { name: home, abbreviation: abbreviation(home) },
         awayTeam: { name: away, abbreviation: abbreviation(away) },
         startsAt,
@@ -343,7 +333,8 @@ class AIMatchService {
     const total = homeProb + drawProb + awayProb;
 
     return {
-      predictedWinner: homeOdds < awayOdds ? 'HOME' : awayOdds < homeOdds ? 'AWAY' : 'DRAW',
+      predictedWinner:
+        homeOdds < awayOdds ? 'HOME' : awayOdds < homeOdds ? 'AWAY' : 'DRAW',
       confidence: Math.floor(Math.random() * 30 + 55),
       probability: {
         home: ((homeProb / total) * 100).toFixed(1),
@@ -363,7 +354,6 @@ function pickSportAndLeague() {
   const sports = Object.keys(LEAGUES);
   const sport = pickRandom(sports);
   const leagues = LEAGUES[sport];
-  // Bias toward higher-priority leagues by repeating them in the pool
   const weighted = [];
   for (const l of leagues) {
     const weight = l.priority === 1 ? 4 : l.priority === 2 ? 2 : 1;
@@ -374,42 +364,11 @@ function pickSportAndLeague() {
 }
 
 function buildMarkets(sport) {
-  const base = [
+  return [
     { name: '1', odds: +(1.5 + Math.random() * 2).toFixed(2), isActive: true },
     { name: 'X', odds: +(2.8 + Math.random() * 1.5).toFixed(2), isActive: true },
     { name: '2', odds: +(1.5 + Math.random() * 2).toFixed(2), isActive: true },
   ];
-
-  const extras = {
-    soccer: [
-      { name: 'Over 2.5', odds: 1.95, isActive: true },
-      { name: 'Under 2.5', odds: 1.95, isActive: true },
-      { name: 'BTTS', odds: 1.90, isActive: true },
-    ],
-    basketball: [
-      { name: 'Over 210.5', odds: 1.90, isActive: true },
-      { name: 'Under 210.5', odds: 1.90, isActive: true },
-    ],
-    'american-football': [
-      { name: 'Over 45.5', odds: 1.90, isActive: true },
-      { name: 'Under 45.5', odds: 1.90, isActive: true },
-    ],
-    baseball: [
-      { name: 'Over 8.5', odds: 1.90, isActive: true },
-      { name: 'Under 8.5', odds: 1.90, isActive: true },
-    ],
-    'ice-hockey': [
-      { name: 'Over 5.5', odds: 1.90, isActive: true },
-      { name: 'Under 5.5', odds: 1.90, isActive: true },
-    ],
-    tennis: [
-      { name: 'Straight Sets', odds: 2.10, isActive: true },
-    ],
-    cricket: [],
-    mma: [],
-  };
-
-  return [...base, ...(extras[sport] || [])];
 }
 
 module.exports = new AIMatchService();
