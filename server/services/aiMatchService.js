@@ -1,6 +1,6 @@
 // server/services/aiMatchService.js
 const Match = require('../models/Match');
-const OddsApiService = require('./OddsApiService');
+const FixturesCoordinator = require('./FixturesCoordinator');
 const {
   LEAGUES,
   SPORT_DURATIONS,
@@ -71,10 +71,18 @@ class AIMatchService {
   async rotate() {
     try {
       await this.archiveOldFinished();
-      await OddsApiService.upsertMatchesFromApi().catch(err =>
-        console.error('📡 OddsApi error:', err.message)
+
+      // ── Multi-source real-fixture fetch (priority ordered) ──
+      // 1. The Odds API    (14 major leagues)
+      // 2. Sportmonks      (Scottish + Danish free-tier leagues)
+      // 3. TheSportsDB     (fallback for the rest)
+      await FixturesCoordinator.fetchAll().catch(err =>
+        console.error('📡 Coordinator error:', err.message)
       );
+
+      // ── Fill any remaining gaps with mock matches ──
       await this.topUpUpcoming();
+
       console.log('✅ AI Match Service: rotation complete');
     } catch (err) {
       console.error('❌ rotate error:', err.message);
@@ -125,7 +133,6 @@ class AIMatchService {
       const isTennis = sport === 'tennis';
 
       if (isBasketball) {
-        // ~2–4 points per tick per team
         const homePts = Math.random() < 0.7 ? 2 + Math.floor(Math.random() * 3) : 0;
         const awayPts = Math.random() < 0.65 ? 2 + Math.floor(Math.random() * 3) : 0;
         match.score.home = Math.min((match.score.home || 0) + homePts, weights.maxScore);
@@ -137,7 +144,6 @@ class AIMatchService {
           else match.score.away = Math.min((match.score.away || 0) + 1, 3);
         }
       } else {
-        // Goal-based: ~15% chance per tick per team
         if (Math.random() < weights.homeGoalRate * MINUTES_PER_TICK / 30) {
           match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
           match.events = match.events || [];
@@ -255,7 +261,6 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      // Started 5–40 game-minutes ago
       const minutesAgo = 5 + Math.floor(Math.random() * 35);
       const startsAt = new Date(now - minutesAgo * 60 * 1000);
 
