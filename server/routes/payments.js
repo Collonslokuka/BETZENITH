@@ -125,26 +125,25 @@ function generateTimestamp() {
 }
 
 /**
- * Initiate STK Push
+ * Initiate STK Push for a Buy Goods (Till) transaction.
  *
- * IMPORTANT — this is for a LIPA NA M-PESA ONLINE (Paybill-style) shortcode:
- *  - BusinessShortCode and PartyB = the Daraja shortcode (9960318)
- *  - Password = Base64(Shortcode + Passkey + Timestamp)
- *  - TransactionType = 'CustomerPayBillOnline'
+ * CRITICAL — BusinessShortCode and PartyB are DIFFERENT:
+ *   BusinessShortCode = Daraja shortcode    (9960318) → app authentication + password hash
+ *   PartyB            = Till Number         (8595330) → where the money lands
+ *   Password          = Base64(DarajaShortcode + Passkey + Timestamp)
+ *   TransactionType   = 'CustomerBuyGoodsOnline'  (Buy Goods = Till)
  *
- * Env vars:
- *  - MPESA_STORE_NUMBER → the Daraja shortcode that was issued the passkey (9960318)
- *  - MPESA_TILL_NUMBER  → display-only number shown to customers (8595330)
+ * This matches the working Python configuration.
  */
 async function initiateSTKPush(phoneNumber, amount, accountReference) {
-  const storeNumber = process.env.MPESA_STORE_NUMBER || '9960318';
+  const darajaShortcode = process.env.MPESA_SHORTCODE || '9960318';
   const tillNumber = process.env.MPESA_TILL_NUMBER || '8595330';
 
   console.log('📱 Initiating STK Push:', {
     phoneNumber,
     amount,
     accountReference,
-    storeNumber,
+    darajaShortcode,
     tillNumber,
     env: MPESA_CONFIG.environment,
   });
@@ -161,20 +160,21 @@ async function initiateSTKPush(phoneNumber, amount, accountReference) {
     const formattedPhone = formatPhoneNumber(phoneNumber);
     const timestamp = generateTimestamp();
 
+    // Password = Base64(DarajaShortcode + Passkey + Timestamp)
     const password = Buffer.from(
-      `${storeNumber}${MPESA_CONFIG.passkey}${timestamp}`
+      `${darajaShortcode}${MPESA_CONFIG.passkey}${timestamp}`
     ).toString('base64');
 
     const url = `${MPESA_CONFIG.baseUrl}/mpesa/stkpush/v1/processrequest`;
 
     const requestBody = {
-      BusinessShortCode: storeNumber,
+      BusinessShortCode: darajaShortcode,
       Password: password,
       Timestamp: timestamp,
-      TransactionType: 'CustomerPayBillOnline',
+      TransactionType: 'CustomerBuyGoodsOnline',
       Amount: Math.round(amount),
       PartyA: formattedPhone,
-      PartyB: storeNumber,
+      PartyB: tillNumber,
       PhoneNumber: formattedPhone,
       CallBackURL: MPESA_CONFIG.callbackUrl,
       AccountReference: accountReference.substring(0, 12),
@@ -750,9 +750,8 @@ router.get('/test-mpesa-auth', async (req, res) => {
     tokenPreview: token ? token.substring(0, 20) + '...' : null,
     environment: MPESA_CONFIG.environment,
     callbackUrl: MPESA_CONFIG.callbackUrl,
-    shortcode: MPESA_CONFIG.shortcode,
-    storeNumber: process.env.MPESA_STORE_NUMBER || '9960318',
-    tillNumber: PAYMENT_METHODS.KES.tillNumber,
+    darajaShortcode: process.env.MPESA_SHORTCODE || '9960318',
+    tillNumber: process.env.MPESA_TILL_NUMBER || '8595330',
     defaultCurrency: 'KES',
   });
 });
