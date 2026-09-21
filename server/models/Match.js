@@ -3,12 +3,11 @@ const mongoose = require('mongoose');
 
 // ============================================================
 //  BETTING CLOSURE CONFIGURATION
-//  Minutes after which betting closes for each sport
 // ============================================================
 const BETTING_CLOSE_MINUTES = {
   soccer: 85,
   basketball: 45,
-  football: 55,   // NFL
+  football: 55,
   baseball: 8,
   hockey: 55,
   tennis: 4,
@@ -37,18 +36,28 @@ const marketSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: [
-      '1',
-      'X',
-      '2',
-      'Over 0.5',
-      'Over 1.5',
-      'Over 2.5',
-      'Under 2.5',
-      'BTTS',
-      'BTTS No',
-      'Double Chance 1X',
-      'Double Chance 12',
-      'Double Chance X2',
+      // 1X2 (soccer)
+      '1', 'X', '2',
+
+      // Moneyline (basketball, tennis, hockey, NFL, baseball, MMA, cricket)
+      'Home', 'Away',
+
+      // Totals (all sports)
+      'Over 0.5', 'Over 1.5', 'Over 2.5', 'Under 2.5',
+      'Over 8.5', 'Under 8.5',
+      'Over 5.5', 'Under 5.5',
+      'Over 45.5', 'Under 45.5',
+      'Over 210.5', 'Under 210.5',
+      'Over 220.5', 'Under 220.5',
+
+      // Both teams to score (soccer)
+      'BTTS', 'BTTS No',
+
+      // Double chance (soccer)
+      'Double Chance 1X', 'Double Chance 12', 'Double Chance X2',
+
+      // Tennis
+      'Straight Sets',
     ],
   },
   odds: {
@@ -258,28 +267,13 @@ matchSchema.pre('save', function (next) {
 });
 
 // ============================================================
-//  BETTING CLOSURE LOGIC (NEW)
+//  BETTING CLOSURE LOGIC
 // ============================================================
 
-/**
- * Check if betting is currently allowed on this match
- * Returns false when:
- *  - Match is finished/cancelled/postponed
- *  - Live betting is disabled
- *  - Match is in the final stages (past the per-sport cutoff)
- */
 matchSchema.methods.isBettingAvailable = function () {
-  // 1. Match is over or cancelled
-  if (CLOSED_STATUSES.includes(this.status)) {
-    return false;
-  }
+  if (CLOSED_STATUSES.includes(this.status)) return false;
+  if (this.status === 'LIVE' && !this.liveBettingEnabled) return false;
 
-  // 2. Live betting disabled on this match
-  if (this.status === 'LIVE' && !this.liveBettingEnabled) {
-    return false;
-  }
-
-  // 3. Beyond second-half cutoff — no more betting
   const sport = (this.sport || 'soccer').toLowerCase();
   const cutoff = BETTING_CLOSE_MINUTES[sport] ?? 85;
   const minute = this.minute || 0;
@@ -291,7 +285,6 @@ matchSchema.methods.isBettingAvailable = function () {
     return false;
   }
 
-  // 4. Live match running past regulation length
   const maxDuration = this.matchDuration || 90;
   if (
     ['LIVE', 'SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) &&
@@ -303,9 +296,6 @@ matchSchema.methods.isBettingAvailable = function () {
   return true;
 };
 
-/**
- * Reason why betting is currently closed (for UI display)
- */
 matchSchema.methods.getBettingClosedReason = function () {
   if (this.isBettingAvailable()) return null;
 
@@ -326,7 +316,6 @@ matchSchema.methods.getBettingClosedReason = function () {
   return 'Betting is not available';
 };
 
-// Virtual field
 matchSchema.virtual('bettingOpen').get(function () {
   return this.isBettingAvailable();
 });

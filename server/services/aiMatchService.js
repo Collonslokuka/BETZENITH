@@ -1,5 +1,6 @@
 // server/services/aiMatchService.js
 const Match = require('../models/Match');
+const OddsApiService = require('./OddsApiService');
 const {
   LEAGUES,
   SPORT_DURATIONS,
@@ -10,11 +11,12 @@ const {
 } = require('../data/leagueRegistry');
 
 // Config
-const LIVE_TICK_MS = 30 * 1000;         // update live scores every 30s
-const ROTATION_TICK_MS = 60 * 60 * 1000; // rotate upcoming every hour
-const TARGET_UPCOMING = 250;             // total upcoming matches to keep
-const TARGET_LIVE = 20;                  // keep ~20 matches live
-const KEEP_FINISHED_HOURS = 24;          // keep finished matches for 24h
+const LIVE_TICK_MS = 30 * 1000;
+const ROTATION_TICK_MS = 60 * 60 * 1000;
+const TARGET_UPCOMING = 250;
+const TARGET_LIVE = 20;
+const KEEP_FINISHED_HOURS = 24;
+const MIN_PER_LEAGUE = 2;
 
 class AIMatchService {
   constructor() {
@@ -28,7 +30,6 @@ class AIMatchService {
     this.isRunning = true;
     console.log('🤖 AI Match Service Started');
 
-    // First run: seed immediately
     this.tick().catch(err => console.error('🤖 tick error:', err.message));
     this.rotate().catch(err => console.error('🤖 rotate error:', err.message));
 
@@ -50,10 +51,6 @@ class AIMatchService {
     console.log('🤖 AI Match Service Stopped');
   }
 
-  // ============================================================
-  //  MAIN TICKS
-  // ============================================================
-
   async tick() {
     try {
       await this.promoteScheduledToLive();
@@ -69,16 +66,15 @@ class AIMatchService {
   async rotate() {
     try {
       await this.archiveOldFinished();
+      await OddsApiService.upsertMatchesFromApi().catch(err =>
+        console.error('📡 OddsApi error:', err.message)
+      );
       await this.topUpUpcoming();
       console.log('✅ AI Match Service: rotation complete');
     } catch (err) {
       console.error('❌ rotate error:', err.message);
     }
   }
-
-  // ============================================================
-  //  PROMOTE / FINISH
-  // ============================================================
 
   async promoteScheduledToLive() {
     const now = new Date();
@@ -116,7 +112,6 @@ class AIMatchService {
       const newMinute = Math.min((match.minute || 0) + minuteInc, dur.regular);
       match.minute = newMinute;
 
-      // Update period label
       if (newMinute <= dur.halftime) match.status = 'FIRST_HALF';
       else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
 
@@ -200,10 +195,6 @@ class AIMatchService {
     }
   }
 
-  // ============================================================
-  //  TOP-UPS
-  // ============================================================
-
   async topUpLiveIfNeeded() {
     const liveCount = await Match.countDocuments({
       status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
@@ -230,13 +221,23 @@ class AIMatchService {
     }
 
     const need = TARGET_UPCOMING - upcomingCount;
-    console.log(`📅 Generating ${need} upcoming matches across next 24h`);
-    await this.generateUpcomingBatch(need);
+    const coveredLeagues = await this.getCoveredLeagues(now, horizon);
+
+    console.log(`📅 Generating ${need} mock upcoming matches (covered: ${coveredLeagues.size})`);
+    await this.generateUpcomingBatch(need, coveredLeagues);
   }
 
-  // ============================================================
-  //  GENERATORS
-  // ============================================================
+  async getCoveredLeagues(from, to) {
+    const rows = await Match.aggregate([
+      { $match: { status: 'SCHEDULED', startsAt: { $gt: from, $lte: to } } },
+      { $group: { _id: '$league', count: { $sum: 1 } } },
+    ]);
+    const covered = new Set();
+    for (const row of rows) {
+      if (row.count >= MIN_PER_LEAGUE) covered.add(row._id);
+    }
+    return covered;
+  }
 
   async generateLiveBatch(count) {
     const now = Date.now();
@@ -267,16 +268,31 @@ class AIMatchService {
         lastUpdated: new Date(),
         markets: buildMarkets(sport),
         events: [],
-        aiPrediction: null,
+        source: 'mock',
       });
     }
   }
 
-  async generateUpcomingBatch(count) {
+  async generateUpcomingBatch(count, coveredLeagues = new Set()) {
     const now = Date.now();
 
+    const pool = [];
+    for (const [sport, leagues] of Object.entries(LEAGUES)) {
+      for (const league of leagues) {
+        if (coveredLeagues.has(league.name)) continue;
+        const weight = league.priority === 1 ? 4 : league.priority === 2 ? 2 : 1;
+        for (let i = 0; i < weight; i++) pool.push({ sport, league });
+      }
+    }
+
+    if (pool.length === 0) {
+      console.log('📅 Mock generator: all leagues already covered, skipping');
+      return;
+    }
+
+    let created = 0;
     for (let i = 0; i < count; i++) {
-      const { sport, league } = pickSportAndLeague();
+      const { sport, league } = pool[Math.floor(Math.random() * pool.length)];
       const [home, away] = pickDistinct(league.teams, 2);
 
       const offsetMinutes = Math.floor((i / count) * 24 * 60) + Math.floor(Math.random() * 30);
@@ -304,28 +320,19 @@ class AIMatchService {
         minute: 0,
         score: { home: 0, away: 0 },
         markets: buildMarkets(sport),
-        aiPrediction: null,
         events: [],
+        source: 'mock',
       });
+      created++;
     }
-  }
 
-  // ============================================================
-  //  AI PREDICTION
-  // ============================================================
-
-  async generateAIPredictions() {
-    const matches = await Match.find({ status: { $in: ['SCHEDULED', 'LIVE'] } });
-    for (const match of matches) {
-      match.aiPrediction = await this.calculateAIPrediction(match);
-      await match.save();
-    }
+    console.log(`📅 Mock created: ${created} matches`);
   }
 
   async calculateAIPrediction(match) {
-    const homeOdds = match.markets?.find(m => m.name === '1')?.odds || 2.0;
+    const homeOdds = match.markets?.find(m => m.name === '1' || m.name === 'Home')?.odds || 2.0;
     const drawOdds = match.markets?.find(m => m.name === 'X')?.odds || 3.4;
-    const awayOdds = match.markets?.find(m => m.name === '2')?.odds || 2.0;
+    const awayOdds = match.markets?.find(m => m.name === '2' || m.name === 'Away')?.odds || 2.0;
 
     const homeProb = (1 / homeOdds) * 100;
     const drawProb = (1 / drawOdds) * 100;
@@ -364,11 +371,65 @@ function pickSportAndLeague() {
 }
 
 function buildMarkets(sport) {
-  return [
-    { name: '1', odds: +(1.5 + Math.random() * 2).toFixed(2), isActive: true },
-    { name: 'X', odds: +(2.8 + Math.random() * 1.5).toFixed(2), isActive: true },
-    { name: '2', odds: +(1.5 + Math.random() * 2).toFixed(2), isActive: true },
-  ];
+  switch (sport) {
+    case 'soccer': {
+      return [
+        { name: '1', odds: +(1.4 + Math.random() * 2.6).toFixed(2), isActive: true },
+        { name: 'X', odds: +(3.0 + Math.random() * 1.3).toFixed(2), isActive: true },
+        { name: '2', odds: +(1.4 + Math.random() * 2.6).toFixed(2), isActive: true },
+        { name: 'Over 2.5', odds: +(1.75 + Math.random() * 0.5).toFixed(2), isActive: true },
+        { name: 'Under 2.5', odds: +(1.75 + Math.random() * 0.5).toFixed(2), isActive: true },
+        { name: 'BTTS', odds: +(1.7 + Math.random() * 0.6).toFixed(2), isActive: true },
+        { name: 'BTTS No', odds: +(1.7 + Math.random() * 0.6).toFixed(2), isActive: true },
+      ];
+    }
+    case 'basketball':
+      return [
+        { name: 'Home', odds: +(1.2 + Math.random() * 2.0).toFixed(2), isActive: true },
+        { name: 'Away', odds: +(1.2 + Math.random() * 2.0).toFixed(2), isActive: true },
+        { name: 'Over 220.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+        { name: 'Under 220.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+      ];
+    case 'american-football':
+      return [
+        { name: 'Home', odds: +(1.3 + Math.random() * 1.8).toFixed(2), isActive: true },
+        { name: 'Away', odds: +(1.3 + Math.random() * 1.8).toFixed(2), isActive: true },
+        { name: 'Over 45.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+        { name: 'Under 45.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+      ];
+    case 'baseball':
+      return [
+        { name: 'Home', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
+        { name: 'Away', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
+        { name: 'Over 8.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+        { name: 'Under 8.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+      ];
+    case 'ice-hockey':
+      return [
+        { name: 'Home', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
+        { name: 'Away', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
+        { name: 'Over 5.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+        { name: 'Under 5.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
+      ];
+    case 'tennis':
+      return [
+        { name: 'Home', odds: +(1.2 + Math.random() * 2.2).toFixed(2), isActive: true },
+        { name: 'Away', odds: +(1.2 + Math.random() * 2.2).toFixed(2), isActive: true },
+        { name: 'Straight Sets', odds: +(1.8 + Math.random() * 0.8).toFixed(2), isActive: true },
+      ];
+    case 'cricket':
+    case 'mma':
+      return [
+        { name: 'Home', odds: +(1.3 + Math.random() * 2.0).toFixed(2), isActive: true },
+        { name: 'Away', odds: +(1.3 + Math.random() * 2.0).toFixed(2), isActive: true },
+      ];
+    default:
+      return [
+        { name: '1', odds: +(1.5 + Math.random() * 2.0).toFixed(2), isActive: true },
+        { name: 'X', odds: +(2.8 + Math.random() * 1.5).toFixed(2), isActive: true },
+        { name: '2', odds: +(1.5 + Math.random() * 2.0).toFixed(2), isActive: true },
+      ];
+  }
 }
 
 module.exports = new AIMatchService();
