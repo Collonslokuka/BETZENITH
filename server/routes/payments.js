@@ -36,12 +36,12 @@ const PAYMENT_METHODS = {
     flag: '🇰🇪',
     default: true,
     minDeposit: parseInt(process.env.MINIMUM_DEPOSIT) || 100,
-    tillNumber: process.env.MPESA_TILL_NUMBER || '9960318',
+    tillNumber: process.env.MPESA_TILL_NUMBER || '8595330',
     methods: [
       {
         id: 'till',
         name: 'M-Pesa',
-        number: process.env.MPESA_TILL_NUMBER || '9960318',
+        number: process.env.MPESA_TILL_NUMBER || '8595330',
         type: 'Till Number',
         action: 'Pay with M-Pesa',
       },
@@ -126,15 +126,26 @@ function generateTimestamp() {
 
 /**
  * Initiate STK Push for a TILL NUMBER
- * NOTE: For Till, TransactionType must be 'CustomerBuyGoodsOnline'
- *       For Paybill, use 'CustomerPayBillOnline'
+ *
+ * IMPORTANT:
+ *  - BusinessShortCode and PartyB must be the STORE NUMBER, not the Till or Shortcode.
+ *  - Password must be Base64(StoreNumber + Passkey + Timestamp).
+ *  - TransactionType must be 'CustomerBuyGoodsOnline' for a till.
+ *
+ * Env vars:
+ *  - MPESA_STORE_NUMBER  → e.g. 4656460  (used for STK Push)
+ *  - MPESA_TILL_NUMBER   → e.g. 8595330  (display only)
  */
 async function initiateSTKPush(phoneNumber, amount, accountReference) {
-  console.log('📱 Initiating STK Push to Till:', {
+  const storeNumber = process.env.MPESA_STORE_NUMBER || '4656460';
+  const tillNumber = process.env.MPESA_TILL_NUMBER || '8595330';
+
+  console.log('📱 Initiating STK Push:', {
     phoneNumber,
     amount,
     accountReference,
-    till: MPESA_CONFIG.shortcode,
+    storeNumber,
+    tillNumber,
     env: MPESA_CONFIG.environment,
   });
 
@@ -150,25 +161,20 @@ async function initiateSTKPush(phoneNumber, amount, accountReference) {
     const formattedPhone = formatPhoneNumber(phoneNumber);
     const timestamp = generateTimestamp();
 
-    // Sandbox uses test shortcode; production uses real till
-    const businessShortCode =
-      MPESA_CONFIG.environment === 'sandbox' ? '174379' : MPESA_CONFIG.shortcode;
-
     const password = Buffer.from(
-      `${businessShortCode}${MPESA_CONFIG.passkey}${timestamp}`
+      `${storeNumber}${MPESA_CONFIG.passkey}${timestamp}`
     ).toString('base64');
 
     const url = `${MPESA_CONFIG.baseUrl}/mpesa/stkpush/v1/processrequest`;
 
     const requestBody = {
-      BusinessShortCode: businessShortCode,
+      BusinessShortCode: storeNumber,
       Password: password,
       Timestamp: timestamp,
-      // 🔥 CRITICAL: CustomerBuyGoodsOnline for Till, CustomerPayBillOnline for Paybill
       TransactionType: 'CustomerBuyGoodsOnline',
       Amount: Math.round(amount),
       PartyA: formattedPhone,
-      PartyB: businessShortCode,
+      PartyB: storeNumber,
       PhoneNumber: formattedPhone,
       CallBackURL: MPESA_CONFIG.callbackUrl,
       AccountReference: accountReference.substring(0, 12),
@@ -766,6 +772,7 @@ router.get('/test-mpesa-auth', async (req, res) => {
     environment: MPESA_CONFIG.environment,
     callbackUrl: MPESA_CONFIG.callbackUrl,
     shortcode: MPESA_CONFIG.shortcode,
+    storeNumber: process.env.MPESA_STORE_NUMBER || '4656460',
     tillNumber: PAYMENT_METHODS.KES.tillNumber,
     defaultCurrency: 'KES',
   });
