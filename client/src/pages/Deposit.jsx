@@ -284,7 +284,7 @@ export default function Deposit() {
               <span className="text-2xl mr-2">📱</span>
               <h3 className="text-white font-bold text-sm">M-Pesa Till Number</h3>
             </div>
-            <p className="text-3xl font-bold text-[#2e7d32] mb-3 text-center">9960318</p>
+            <p className="text-3xl font-bold text-[#2e7d32] mb-3 text-center">8595330</p>
             <div className="text-xs text-gray-300">
               <p>You will receive a prompt on your phone</p>
               <p>Enter your M-Pesa PIN to complete payment</p>
