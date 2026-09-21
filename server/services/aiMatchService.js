@@ -10,19 +10,60 @@ const {
   abbreviation,
 } = require('../data/leagueRegistry');
 
-// Config
-const LIVE_TICK_MS = 30 * 1000;                // tick every 30s
-const ROTATION_TICK_MS = 60 * 60 * 1000;       // rotate every 1h
-const TARGET_UPCOMING = 250;
-const TARGET_LIVE = 20;
-const KEEP_FINISHED_HOURS = 24;
+// ============================================================
+//  CONFIG
+// ============================================================
+const LIVE_TICK_MS = 30 * 1000;                 // 30 seconds
+const ROTATION_TICK_MS = 60 * 60 * 1000;        // 1 hour
+const KEEP_FINISHED_HOURS = 48;                 // keep 2 days of finished
 const MIN_PER_LEAGUE = 2;
 
-// How many game-minutes to advance per 30s tick.
-// 2 → a 90-minute soccer match finishes in ~22 real minutes.
-// Configurable via env MATCH_MINUTES_PER_TICK
-const MINUTES_PER_TICK = parseInt(process.env.MATCH_MINUTES_PER_TICK) || 2;
+// Per-sport live targets (total = 27)
+const LIVE_PER_SPORT = {
+  soccer: 8,
+  basketball: 4,
+  'american-football': 2,
+  baseball: 2,
+  'ice-hockey': 3,
+  tennis: 4,
+  cricket: 2,
+  mma: 2,
+};
 
+// Per-sport upcoming targets (total = 530)
+const UPCOMING_PER_SPORT = {
+  soccer: 300,
+  basketball: 60,
+  'american-football': 30,
+  baseball: 30,
+  'ice-hockey': 30,
+  tennis: 40,
+  cricket: 20,
+  mma: 20,
+};
+
+// Finished matches to seed on startup (total = 145)
+const SEED_FINISHED_PER_SPORT = {
+  soccer: 60,
+  basketball: 20,
+  'american-football': 10,
+  baseball: 10,
+  'ice-hockey': 10,
+  tennis: 15,
+  cricket: 10,
+  mma: 10,
+};
+
+// How many game-minutes advance per 30s tick, per sport.
+// Every match should last roughly 22 real minutes.
+function minutesPerTick(sport) {
+  const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+  return Math.max(1, Math.ceil(dur.regular / 45));
+}
+
+// ============================================================
+//  SERVICE
+// ============================================================
 class AIMatchService {
   constructor() {
     this.liveTimer = null;
@@ -33,11 +74,18 @@ class AIMatchService {
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log(`🤖 AI Match Service Started (${MINUTES_PER_TICK} game-min/tick)`);
+    console.log('🤖 AI Match Service Started');
 
+    // 1. Seed finished matches (only if DB is empty of them)
+    this.seedFinishedMatches().catch(err =>
+      console.error('🏁 seed-finished error:', err.message)
+    );
+
+    // 2. First run
     this.tick().catch(err => console.error('🤖 tick error:', err.message));
     this.rotate().catch(err => console.error('🤖 rotate error:', err.message));
 
+    // 3. Periodic
     this.liveTimer = setInterval(() => {
       this.tick().catch(err => console.error('🤖 tick error:', err.message));
     }, LIVE_TICK_MS);
@@ -56,13 +104,17 @@ class AIMatchService {
     console.log('🤖 AI Match Service Stopped');
   }
 
+  // ============================================================
+  //  MAIN TICKS
+  // ============================================================
+
   async tick() {
     try {
       await this.promoteScheduledToLive();
       await this.updateLiveMatches();
       await this.finishOldLive();
       await this.topUpLiveIfNeeded();
-      console.log('✅ AI Match Service: tick complete');
+      console.log('✅ tick complete');
     } catch (err) {
       console.error('❌ tick error:', err.message);
     }
@@ -72,29 +124,28 @@ class AIMatchService {
     try {
       await this.archiveOldFinished();
 
-      // ── Multi-source real-fixture fetch (priority ordered) ──
-      // 1. The Odds API    (14 major leagues)
-      // 2. Sportmonks      (Scottish + Danish free-tier leagues)
-      // 3. TheSportsDB     (fallback for the rest)
       await FixturesCoordinator.fetchAll().catch(err =>
         console.error('📡 Coordinator error:', err.message)
       );
 
-      // ── Fill any remaining gaps with mock matches ──
       await this.topUpUpcoming();
 
-      console.log('✅ AI Match Service: rotation complete');
+      console.log('✅ rotation complete');
     } catch (err) {
       console.error('❌ rotate error:', err.message);
     }
   }
+
+  // ============================================================
+  //  PROMOTE / UPDATE / FINISH
+  // ============================================================
 
   async promoteScheduledToLive() {
     const now = new Date();
     const toStart = await Match.find({
       status: 'SCHEDULED',
       startsAt: { $lte: now },
-    }).limit(50);
+    }).limit(80);
 
     for (const match of toStart) {
       match.status = 'FIRST_HALF';
@@ -105,7 +156,7 @@ class AIMatchService {
       await match.save();
     }
 
-    if (toStart.length) console.log(`▶️  Promoted ${toStart.length} matches to LIVE`);
+    if (toStart.length) console.log(`▶️  Promoted ${toStart.length} to LIVE`);
   }
 
   async updateLiveMatches() {
@@ -118,19 +169,20 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      // Advance minute by fixed amount per tick
-      const newMinute = Math.min((match.minute || 0) + MINUTES_PER_TICK, dur.regular);
+      const tick = minutesPerTick(sport);
+      const newMinute = Math.min((match.minute || 0) + tick, dur.regular);
       match.minute = newMinute;
 
-      // Period label
+      // Period
       if (newMinute < dur.halftime) match.status = 'FIRST_HALF';
       else if (newMinute === dur.halftime) match.status = 'HALFTIME';
       else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
-      else match.status = 'SECOND_HALF'; // will finish on next tick
+      else match.status = 'SECOND_HALF';
 
       // Score simulation
       const isBasketball = sport === 'basketball';
       const isTennis = sport === 'tennis';
+      const isMMA = sport === 'mma';
 
       if (isBasketball) {
         const homePts = Math.random() < 0.7 ? 2 + Math.floor(Math.random() * 3) : 0;
@@ -143,8 +195,16 @@ class AIMatchService {
           if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 3);
           else match.score.away = Math.min((match.score.away || 0) + 1, 3);
         }
+      } else if (isMMA) {
+        // MMA finishes quickly
+        if (Math.random() < 0.08) {
+          const homeWins = Math.random() < 0.5;
+          if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 1);
+          else match.score.away = Math.min((match.score.away || 0) + 1, 1);
+        }
       } else {
-        if (Math.random() < weights.homeGoalRate * MINUTES_PER_TICK / 30) {
+        // Soccer, football, hockey, baseball, cricket
+        if (Math.random() < weights.homeGoalRate * tick / 30) {
           match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
           match.events = match.events || [];
           match.events.push({
@@ -153,7 +213,7 @@ class AIMatchService {
             at: new Date(),
           });
         }
-        if (Math.random() < weights.awayGoalRate * MINUTES_PER_TICK / 30) {
+        if (Math.random() < weights.awayGoalRate * tick / 30) {
           match.score.away = Math.min((match.score.away || 0) + 1, weights.maxScore);
           match.events = match.events || [];
           match.events.push({
@@ -209,41 +269,121 @@ class AIMatchService {
     }
   }
 
-  async topUpLiveIfNeeded() {
-    const liveCount = await Match.countDocuments({
-      status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
-    });
-    if (liveCount >= TARGET_LIVE) return;
+  // ============================================================
+  //  SEED FINISHED (one-time on startup)
+  // ============================================================
 
-    const need = TARGET_LIVE - liveCount;
-    console.log(`🔴 Only ${liveCount} live matches — generating ${need} now`);
-    await this.generateLiveBatch(need);
+  async seedFinishedMatches() {
+    const total = await Match.countDocuments({ status: 'FINISHED' });
+    if (total >= 50) {
+      console.log(`🏁 Already ${total} finished matches, skipping seed`);
+      return;
+    }
+
+    console.log('🏁 Seeding finished matches across all sports...');
+    const now = Date.now();
+
+    for (const [sport, target] of Object.entries(SEED_FINISHED_PER_SPORT)) {
+      const existing = await Match.countDocuments({ sport, status: 'FINISHED' });
+      const need = target - existing;
+      if (need <= 0) continue;
+
+      const leagues = LEAGUES[sport] || [];
+      if (leagues.length === 0) continue;
+
+      for (let i = 0; i < need; i++) {
+        const league = pickRandom(leagues);
+        const [home, away] = pickDistinct(league.teams, 2);
+        const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+        const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
+
+        const hoursAgo = 1 + Math.random() * 20;
+        const startsAt = new Date(now - hoursAgo * 60 * 60 * 1000);
+        const finishedAt = new Date(startsAt.getTime() + dur.regular * 60 * 1000);
+
+        const homeScore = Math.floor(weights.homeGoalRate * 3 * Math.random() + Math.random() * 2);
+        const awayScore = Math.floor(weights.awayGoalRate * 3 * Math.random() + Math.random() * 2);
+
+        try {
+          await Match.create({
+            sport,
+            league: league.name,
+            homeTeam: { name: home, abbreviation: abbreviation(home) },
+            awayTeam: { name: away, abbreviation: abbreviation(away) },
+            startsAt,
+            finishedAt,
+            date: startsAt,
+            time: startsAt.toLocaleTimeString(),
+            status: 'FINISHED',
+            minute: dur.regular,
+            score: { home: homeScore, away: awayScore },
+            result: {
+              winner: homeScore > awayScore ? 'HOME' : awayScore > homeScore ? 'AWAY' : 'DRAW',
+              score: { home: homeScore, away: awayScore },
+              isSettled: true,
+              settledAt: finishedAt,
+            },
+            lastUpdated: finishedAt,
+            markets: buildMarkets(sport),
+            events: [],
+            source: 'mock',
+          });
+        } catch (e) { /* skip on validation error */ }
+      }
+
+      console.log(`🏁 Seeded ${need} finished ${sport}`);
+    }
+  }
+
+  // ============================================================
+  //  TOP-UPS (per sport)
+  // ============================================================
+
+  async topUpLiveIfNeeded() {
+    const counts = await Match.aggregate([
+      { $match: { status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] } } },
+      { $group: { _id: '$sport', count: { $sum: 1 } } },
+    ]);
+
+    const bySport = {};
+    for (const row of counts) bySport[row._id || 'soccer'] = row.count;
+
+    for (const [sport, target] of Object.entries(LIVE_PER_SPORT)) {
+      const current = bySport[sport] || 0;
+      if (current < target) {
+        const need = target - current;
+        console.log(`🔴 ${sport}: ${current} live (need ${need})`);
+        await this.generateLiveBatch(need, sport);
+      }
+    }
   }
 
   async topUpUpcoming() {
     const now = new Date();
     const horizon = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    const upcomingCount = await Match.countDocuments({
-      status: 'SCHEDULED',
-      startsAt: { $gt: now, $lte: horizon },
-    });
+    const counts = await Match.aggregate([
+      { $match: { status: 'SCHEDULED', startsAt: { $gt: now, $lte: horizon } } },
+      { $group: { _id: '$sport', count: { $sum: 1 } } },
+    ]);
 
-    if (upcomingCount >= TARGET_UPCOMING) {
-      console.log(`📅 Upcoming OK (${upcomingCount} in 24h window)`);
-      return;
+    const bySport = {};
+    for (const row of counts) bySport[row._id || 'soccer'] = row.count;
+
+    for (const [sport, target] of Object.entries(UPCOMING_PER_SPORT)) {
+      const current = bySport[sport] || 0;
+      if (current < target) {
+        const need = target - current;
+        const coveredLeagues = await this.getCoveredLeagues(sport, now, horizon);
+        console.log(`📅 ${sport}: ${current} upcoming (need ${need})`);
+        await this.generateUpcomingBatch(need, sport, coveredLeagues);
+      }
     }
-
-    const need = TARGET_UPCOMING - upcomingCount;
-    const coveredLeagues = await this.getCoveredLeagues(now, horizon);
-
-    console.log(`📅 Generating ${need} mock matches (covered leagues: ${coveredLeagues.size})`);
-    await this.generateUpcomingBatch(need, coveredLeagues);
   }
 
-  async getCoveredLeagues(from, to) {
+  async getCoveredLeagues(sport, from, to) {
     const rows = await Match.aggregate([
-      { $match: { status: 'SCHEDULED', startsAt: { $gt: from, $lte: to } } },
+      { $match: { sport, status: 'SCHEDULED', startsAt: { $gt: from, $lte: to } } },
       { $group: { _id: '$league', count: { $sum: 1 } } },
     ]);
     const covered = new Set();
@@ -253,66 +393,77 @@ class AIMatchService {
     return covered;
   }
 
-  async generateLiveBatch(count) {
+  // ============================================================
+  //  GENERATORS (per sport)
+  // ============================================================
+
+  async generateLiveBatch(count, sport) {
     const now = Date.now();
+    const leagues = LEAGUES[sport] || [];
+    if (leagues.length === 0) return 0;
+
+    let created = 0;
     for (let i = 0; i < count; i++) {
-      const { sport, league } = pickSportAndLeague();
+      const league = pickRandom(leagues);
       const [home, away] = pickDistinct(league.teams, 2);
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      const minutesAgo = 5 + Math.floor(Math.random() * 35);
+      const maxMinutesAgo = Math.min(35, Math.floor(dur.regular * 0.6));
+      const minutesAgo = 5 + Math.floor(Math.random() * (maxMinutesAgo - 5));
       const startsAt = new Date(now - minutesAgo * 60 * 1000);
 
       const progress = minutesAgo / dur.regular;
       const baseHome = Math.floor(progress * weights.maxScore * weights.homeGoalRate * 0.4);
       const baseAway = Math.floor(progress * weights.maxScore * weights.awayGoalRate * 0.4);
 
-      await Match.create({
-        sport,
-        league: league.name,
-        homeTeam: { name: home, abbreviation: abbreviation(home) },
-        awayTeam: { name: away, abbreviation: abbreviation(away) },
-        startsAt,
-        date: startsAt,
-        time: startsAt.toLocaleTimeString(),
-        status: minutesAgo < dur.halftime ? 'FIRST_HALF' : 'SECOND_HALF',
-        minute: minutesAgo,
-        score: { home: Math.max(0, baseHome), away: Math.max(0, baseAway) },
-        lastUpdated: new Date(),
-        markets: buildMarkets(sport),
-        events: [],
-        source: 'mock',
-      });
+      try {
+        await Match.create({
+          sport,
+          league: league.name,
+          homeTeam: { name: home, abbreviation: abbreviation(home) },
+          awayTeam: { name: away, abbreviation: abbreviation(away) },
+          startsAt,
+          date: startsAt,
+          time: startsAt.toLocaleTimeString(),
+          status: minutesAgo < dur.halftime ? 'FIRST_HALF' : 'SECOND_HALF',
+          minute: minutesAgo,
+          score: { home: Math.max(0, baseHome), away: Math.max(0, baseAway) },
+          lastUpdated: new Date(),
+          markets: buildMarkets(sport),
+          events: [],
+          source: 'mock',
+        });
+        created++;
+      } catch (e) { /* skip */ }
     }
+    return created;
   }
 
-  async generateUpcomingBatch(count, coveredLeagues = new Set()) {
+  async generateUpcomingBatch(count, sport, coveredLeagues = new Set()) {
     const now = Date.now();
+    const leaguesInSport = LEAGUES[sport] || [];
+    if (leaguesInSport.length === 0) return 0;
 
     const pool = [];
-    for (const [sport, leagues] of Object.entries(LEAGUES)) {
-      for (const league of leagues) {
-        if (coveredLeagues.has(league.name)) continue;
-        const weight = league.priority === 1 ? 4 : league.priority === 2 ? 2 : 1;
-        for (let i = 0; i < weight; i++) pool.push({ sport, league });
-      }
+    for (const league of leaguesInSport) {
+      if (coveredLeagues.has(league.name)) continue;
+      const weight = league.priority === 1 ? 4 : league.priority === 2 ? 2 : 1;
+      for (let i = 0; i < weight; i++) pool.push(league);
     }
 
-    if (pool.length === 0) {
-      console.log('📅 Mock generator: all leagues already covered');
-      return;
-    }
-
+    const sourcePool = pool.length > 0 ? pool : leaguesInSport;
     let created = 0;
+
     for (let i = 0; i < count; i++) {
-      const { sport, league } = pool[Math.floor(Math.random() * pool.length)];
+      const league = sourcePool[Math.floor(Math.random() * sourcePool.length)];
       const [home, away] = pickDistinct(league.teams, 2);
 
       const offsetMinutes = Math.floor((i / count) * 24 * 60) + Math.floor(Math.random() * 30);
       const startsAt = new Date(now + offsetMinutes * 60 * 1000);
 
       const dup = await Match.findOne({
+        sport,
         homeTeam: { name: home },
         awayTeam: { name: away },
         startsAt: {
@@ -322,26 +473,31 @@ class AIMatchService {
       });
       if (dup) continue;
 
-      await Match.create({
-        sport,
-        league: league.name,
-        homeTeam: { name: home, abbreviation: abbreviation(home) },
-        awayTeam: { name: away, abbreviation: abbreviation(away) },
-        startsAt,
-        date: startsAt,
-        time: startsAt.toLocaleTimeString(),
-        status: 'SCHEDULED',
-        minute: 0,
-        score: { home: 0, away: 0 },
-        markets: buildMarkets(sport),
-        events: [],
-        source: 'mock',
-      });
-      created++;
+      try {
+        await Match.create({
+          sport,
+          league: league.name,
+          homeTeam: { name: home, abbreviation: abbreviation(home) },
+          awayTeam: { name: away, abbreviation: abbreviation(away) },
+          startsAt,
+          date: startsAt,
+          time: startsAt.toLocaleTimeString(),
+          status: 'SCHEDULED',
+          minute: 0,
+          score: { home: 0, away: 0 },
+          markets: buildMarkets(sport),
+          events: [],
+          source: 'mock',
+        });
+        created++;
+      } catch (e) { /* skip */ }
     }
-
-    console.log(`📅 Mock created: ${created} matches`);
+    return created;
   }
+
+  // ============================================================
+  //  AI PREDICTION
+  // ============================================================
 
   async calculateAIPrediction(match) {
     const homeOdds = match.markets?.find(m => m.name === '1' || m.name === 'Home')?.odds || 2.0;
@@ -367,18 +523,9 @@ class AIMatchService {
   }
 }
 
-function pickSportAndLeague() {
-  const sports = Object.keys(LEAGUES);
-  const sport = pickRandom(sports);
-  const leagues = LEAGUES[sport];
-  const weighted = [];
-  for (const l of leagues) {
-    const weight = l.priority === 1 ? 4 : l.priority === 2 ? 2 : 1;
-    for (let i = 0; i < weight; i++) weighted.push(l);
-  }
-  const league = pickRandom(weighted);
-  return { sport, league };
-}
+// ============================================================
+//  HELPERS
+// ============================================================
 
 function buildMarkets(sport) {
   switch (sport) {
