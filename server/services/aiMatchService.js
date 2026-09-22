@@ -17,41 +17,42 @@ const LIVE_TICK_MS = 30 * 1000;                 // 30 seconds
 const ROTATION_TICK_MS = 60 * 60 * 1000;        // 1 hour
 const KEEP_FINISHED_HOURS = 48;                 // keep 2 days of finished
 const MIN_PER_LEAGUE = 2;
+const PERSIST_BATCH_SIZE = 100;                 // insertMany batch size
 
-// Per-sport live targets (total = 27)
+// Per-sport live targets (total = 90)
 const LIVE_PER_SPORT = {
-  soccer: 8,
-  basketball: 4,
-  'american-football': 2,
-  baseball: 2,
-  'ice-hockey': 3,
-  tennis: 4,
-  cricket: 2,
-  mma: 2,
+  soccer: 35,
+  basketball: 12,
+  'american-football': 6,
+  baseball: 6,
+  'ice-hockey': 8,
+  tennis: 12,
+  cricket: 6,
+  mma: 5,
 };
 
-// Per-sport upcoming targets (total = 530)
+// Per-sport upcoming targets (total = 1500)
 const UPCOMING_PER_SPORT = {
-  soccer: 300,
+  soccer: 800,
+  basketball: 180,
+  'american-football': 80,
+  baseball: 80,
+  'ice-hockey': 80,
+  tennis: 120,
+  cricket: 80,
+  mma: 80,
+};
+
+// Finished matches to seed on startup (total = 500)
+const SEED_FINISHED_PER_SPORT = {
+  soccer: 250,
   basketball: 60,
   'american-football': 30,
   baseball: 30,
   'ice-hockey': 30,
-  tennis: 40,
-  cricket: 20,
-  mma: 20,
-};
-
-// Finished matches to seed on startup (total = 145)
-const SEED_FINISHED_PER_SPORT = {
-  soccer: 60,
-  basketball: 20,
-  'american-football': 10,
-  baseball: 10,
-  'ice-hockey': 10,
-  tennis: 15,
-  cricket: 10,
-  mma: 10,
+  tennis: 50,
+  cricket: 25,
+  mma: 25,
 };
 
 // How many game-minutes advance per 30s tick, per sport.
@@ -145,7 +146,7 @@ class AIMatchService {
     const toStart = await Match.find({
       status: 'SCHEDULED',
       startsAt: { $lte: now },
-    }).limit(80);
+    }).limit(200);
 
     for (const match of toStart) {
       match.status = 'FIRST_HALF';
@@ -173,13 +174,11 @@ class AIMatchService {
       const newMinute = Math.min((match.minute || 0) + tick, dur.regular);
       match.minute = newMinute;
 
-      // Period
       if (newMinute < dur.halftime) match.status = 'FIRST_HALF';
       else if (newMinute === dur.halftime) match.status = 'HALFTIME';
       else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
       else match.status = 'SECOND_HALF';
 
-      // Score simulation
       const isBasketball = sport === 'basketball';
       const isTennis = sport === 'tennis';
       const isMMA = sport === 'mma';
@@ -196,14 +195,12 @@ class AIMatchService {
           else match.score.away = Math.min((match.score.away || 0) + 1, 3);
         }
       } else if (isMMA) {
-        // MMA finishes quickly
         if (Math.random() < 0.08) {
           const homeWins = Math.random() < 0.5;
           if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 1);
           else match.score.away = Math.min((match.score.away || 0) + 1, 1);
         }
       } else {
-        // Soccer, football, hockey, baseball, cricket
         if (Math.random() < weights.homeGoalRate * tick / 30) {
           match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
           match.events = match.events || [];
@@ -275,7 +272,7 @@ class AIMatchService {
 
   async seedFinishedMatches() {
     const total = await Match.countDocuments({ status: 'FINISHED' });
-    if (total >= 50) {
+    if (total >= 100) {
       console.log(`🏁 Already ${total} finished matches, skipping seed`);
       return;
     }
@@ -291,6 +288,7 @@ class AIMatchService {
       const leagues = LEAGUES[sport] || [];
       if (leagues.length === 0) continue;
 
+      const docs = [];
       for (let i = 0; i < need; i++) {
         const league = pickRandom(leagues);
         const [home, away] = pickDistinct(league.teams, 2);
@@ -304,34 +302,42 @@ class AIMatchService {
         const homeScore = Math.floor(weights.homeGoalRate * 3 * Math.random() + Math.random() * 2);
         const awayScore = Math.floor(weights.awayGoalRate * 3 * Math.random() + Math.random() * 2);
 
-        try {
-          await Match.create({
-            sport,
-            league: league.name,
-            homeTeam: { name: home, abbreviation: abbreviation(home) },
-            awayTeam: { name: away, abbreviation: abbreviation(away) },
-            startsAt,
-            finishedAt,
-            date: startsAt,
-            time: startsAt.toLocaleTimeString(),
-            status: 'FINISHED',
-            minute: dur.regular,
+        docs.push({
+          sport,
+          league: league.name,
+          homeTeam: { name: home, abbreviation: abbreviation(home) },
+          awayTeam: { name: away, abbreviation: abbreviation(away) },
+          startsAt,
+          finishedAt,
+          date: startsAt,
+          time: startsAt.toLocaleTimeString(),
+          status: 'FINISHED',
+          minute: dur.regular,
+          score: { home: homeScore, away: awayScore },
+          result: {
+            winner: homeScore > awayScore ? 'HOME' : awayScore > homeScore ? 'AWAY' : 'DRAW',
             score: { home: homeScore, away: awayScore },
-            result: {
-              winner: homeScore > awayScore ? 'HOME' : awayScore > homeScore ? 'AWAY' : 'DRAW',
-              score: { home: homeScore, away: awayScore },
-              isSettled: true,
-              settledAt: finishedAt,
-            },
-            lastUpdated: finishedAt,
-            markets: buildMarkets(sport),
-            events: [],
-            source: 'mock',
-          });
-        } catch (e) { /* skip on validation error */ }
+            isSettled: true,
+            settledAt: finishedAt,
+          },
+          lastUpdated: finishedAt,
+          markets: buildMarkets(sport),
+          events: [],
+          source: 'mock',
+        });
       }
 
-      console.log(`🏁 Seeded ${need} finished ${sport}`);
+      let inserted = 0;
+      for (let i = 0; i < docs.length; i += PERSIST_BATCH_SIZE) {
+        const batch = docs.slice(i, i + PERSIST_BATCH_SIZE);
+        try {
+          const res = await Match.insertMany(batch, { ordered: false });
+          inserted += res.length;
+        } catch (e) {
+          inserted += (e.insertedDocs || []).length;
+        }
+      }
+      console.log(`🏁 Seeded ${inserted} finished ${sport}`);
     }
   }
 
@@ -402,7 +408,7 @@ class AIMatchService {
     const leagues = LEAGUES[sport] || [];
     if (leagues.length === 0) return 0;
 
-    let created = 0;
+    const docs = [];
     for (let i = 0; i < count; i++) {
       const league = pickRandom(leagues);
       const [home, away] = pickDistinct(league.teams, 2);
@@ -417,25 +423,30 @@ class AIMatchService {
       const baseHome = Math.floor(progress * weights.maxScore * weights.homeGoalRate * 0.4);
       const baseAway = Math.floor(progress * weights.maxScore * weights.awayGoalRate * 0.4);
 
-      try {
-        await Match.create({
-          sport,
-          league: league.name,
-          homeTeam: { name: home, abbreviation: abbreviation(home) },
-          awayTeam: { name: away, abbreviation: abbreviation(away) },
-          startsAt,
-          date: startsAt,
-          time: startsAt.toLocaleTimeString(),
-          status: minutesAgo < dur.halftime ? 'FIRST_HALF' : 'SECOND_HALF',
-          minute: minutesAgo,
-          score: { home: Math.max(0, baseHome), away: Math.max(0, baseAway) },
-          lastUpdated: new Date(),
-          markets: buildMarkets(sport),
-          events: [],
-          source: 'mock',
-        });
-        created++;
-      } catch (e) { /* skip */ }
+      docs.push({
+        sport,
+        league: league.name,
+        homeTeam: { name: home, abbreviation: abbreviation(home) },
+        awayTeam: { name: away, abbreviation: abbreviation(away) },
+        startsAt,
+        date: startsAt,
+        time: startsAt.toLocaleTimeString(),
+        status: minutesAgo < dur.halftime ? 'FIRST_HALF' : 'SECOND_HALF',
+        minute: minutesAgo,
+        score: { home: Math.max(0, baseHome), away: Math.max(0, baseAway) },
+        lastUpdated: new Date(),
+        markets: buildMarkets(sport),
+        events: [],
+        source: 'mock',
+      });
+    }
+
+    let created = 0;
+    try {
+      const res = await Match.insertMany(docs, { ordered: false });
+      created = res.length;
+    } catch (e) {
+      created = (e.insertedDocs || []).length;
     }
     return created;
   }
@@ -453,7 +464,7 @@ class AIMatchService {
     }
 
     const sourcePool = pool.length > 0 ? pool : leaguesInSport;
-    let created = 0;
+    const docs = [];
 
     for (let i = 0; i < count; i++) {
       const league = sourcePool[Math.floor(Math.random() * sourcePool.length)];
@@ -462,35 +473,32 @@ class AIMatchService {
       const offsetMinutes = Math.floor((i / count) * 24 * 60) + Math.floor(Math.random() * 30);
       const startsAt = new Date(now + offsetMinutes * 60 * 1000);
 
-      const dup = await Match.findOne({
+      docs.push({
         sport,
-        homeTeam: { name: home },
-        awayTeam: { name: away },
-        startsAt: {
-          $gte: new Date(startsAt.getTime() - 6 * 3600 * 1000),
-          $lte: new Date(startsAt.getTime() + 6 * 3600 * 1000),
-        },
+        league: league.name,
+        homeTeam: { name: home, abbreviation: abbreviation(home) },
+        awayTeam: { name: away, abbreviation: abbreviation(away) },
+        startsAt,
+        date: startsAt,
+        time: startsAt.toLocaleTimeString(),
+        status: 'SCHEDULED',
+        minute: 0,
+        score: { home: 0, away: 0 },
+        markets: buildMarkets(sport),
+        events: [],
+        source: 'mock',
       });
-      if (dup) continue;
+    }
 
+    let created = 0;
+    for (let i = 0; i < docs.length; i += PERSIST_BATCH_SIZE) {
+      const batch = docs.slice(i, i + PERSIST_BATCH_SIZE);
       try {
-        await Match.create({
-          sport,
-          league: league.name,
-          homeTeam: { name: home, abbreviation: abbreviation(home) },
-          awayTeam: { name: away, abbreviation: abbreviation(away) },
-          startsAt,
-          date: startsAt,
-          time: startsAt.toLocaleTimeString(),
-          status: 'SCHEDULED',
-          minute: 0,
-          score: { home: 0, away: 0 },
-          markets: buildMarkets(sport),
-          events: [],
-          source: 'mock',
-        });
-        created++;
-      } catch (e) { /* skip */ }
+        const res = await Match.insertMany(batch, { ordered: false });
+        created += res.length;
+      } catch (e) {
+        created += (e.insertedDocs || []).length;
+      }
     }
     return created;
   }
