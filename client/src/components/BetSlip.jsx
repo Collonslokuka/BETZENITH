@@ -8,7 +8,7 @@ import { FiTrash2, FiShoppingCart, FiCpu, FiLock } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/axios';
 
-const MINIMUM_STAKE = 500; // KES minimum stake
+const MINIMUM_STAKE = 500;
 
 export default function BetSlip() {
   const {
@@ -30,12 +30,10 @@ export default function BetSlip() {
 
   const totalOdds = getTotalOdds();
 
-  // Fetch AI recommendation when selections change
   useEffect(() => {
     if (selections.length > 0 && isAuthenticated) {
       fetchAIRecommendation();
     } else if (selections.length > 0 && !isAuthenticated) {
-      // Show public recommendation without personalization
       const winProbability = (1 / totalOdds) * 100;
       setAiRecommendation({
         probability: winProbability.toFixed(1),
@@ -70,7 +68,6 @@ export default function BetSlip() {
       setAiRecommendation(response.data.data);
     } catch (error) {
       console.error('Error fetching AI recommendation:', error);
-      // Fallback to local calculation
       const winProbability = (1 / totalOdds) * 100;
       setAiRecommendation({
         probability: winProbability.toFixed(1),
@@ -112,13 +109,11 @@ export default function BetSlip() {
       return;
     }
 
-    // Check minimum stake
     if (totalStake < MINIMUM_STAKE) {
       toast.error(`Minimum stake is KSh ${MINIMUM_STAKE}`);
       return;
     }
 
-    // Check sufficient balance
     if (totalStake > (user?.balance || 0)) {
       toast.error('Insufficient balance');
       return;
@@ -150,11 +145,11 @@ export default function BetSlip() {
   };
 
   return (
-    <div className="bg-[#1a1f2e] rounded-xl border-2 border-[#2a3042] p-4 flex flex-col h-full">
+    <div className="bg-[#1a1f2e] rounded-xl border-2 border-[#2a3042] p-3 sm:p-4 flex flex-col h-full">
       {/* Header with tabs */}
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-white flex items-center">
+          <h2 className="text-base sm:text-lg font-bold text-white flex items-center">
             <FiShoppingCart className="mr-2 text-[#2e7d32]" />
             Bet Slip
           </h2>
@@ -169,7 +164,7 @@ export default function BetSlip() {
         <div className="flex space-x-1 bg-[#0f1219] rounded-lg p-1">
           <button
             onClick={() => setActiveTab('ordinary')}
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            className={`flex-1 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
               activeTab === 'ordinary'
                 ? 'bg-[#2e7d32] text-white'
                 : 'text-gray-400 hover:text-white'
@@ -179,7 +174,7 @@ export default function BetSlip() {
           </button>
           <button
             onClick={() => setActiveTab('express')}
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            className={`flex-1 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
               activeTab === 'express'
                 ? 'bg-[#2e7d32] text-white'
                 : 'text-gray-400 hover:text-white'
@@ -189,7 +184,7 @@ export default function BetSlip() {
           </button>
           <button
             onClick={() => setActiveTab('system')}
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            className={`flex-1 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
               activeTab === 'system'
                 ? 'bg-[#2e7d32] text-white'
                 : 'text-gray-400 hover:text-white'
@@ -222,9 +217,9 @@ export default function BetSlip() {
             <div className={`mb-4 p-3 rounded-lg border ${getRiskColor(aiRecommendation.riskLevel)}`}>
               <div className="flex items-start space-x-2">
                 <FiCpu className="mt-0.5 flex-shrink-0" size={16} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center space-x-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                    <div className="flex items-center space-x-2 flex-wrap">
                       <span className="text-xs font-semibold">
                         AI Analysis • {aiRecommendation.confidence} Confidence
                       </span>
@@ -236,7 +231,7 @@ export default function BetSlip() {
                         className="text-xs flex items-center space-x-1 text-[#2e7d32] hover:underline"
                       >
                         <FiLock size={10} />
-                        <span>Sign in for personalized insights</span>
+                        <span>Sign in</span>
                       </button>
                     )}
                   </div>
@@ -268,15 +263,14 @@ export default function BetSlip() {
                 key={`${selection._id}-${selection.selectedMarket.index}`}
                 className="bg-[#0f1219] rounded-lg p-3 border border-[#2a3042]"
               >
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <div className="text-sm text-white font-medium">
+                <div className="flex justify-between items-start mb-2 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-white font-medium truncate">
                       {selection.homeTeam?.name} vs {selection.awayTeam?.name}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-gray-500 mt-0.5 truncate">
                       {selection.league}
                     </div>
-                    {/* Show match status */}
                     {selection.status === 'FINISHED' && (
                       <div className="text-xs text-red-400 mt-1">
                         ⚠️ Match finished - Bet may be void
@@ -285,7 +279,7 @@ export default function BetSlip() {
                   </div>
                   <button
                     onClick={() => removeFromBetSlip(selection._id, selection.selectedMarket.index)}
-                    className="text-gray-500 hover:text-red-500 transition-colors"
+                    className="text-gray-500 hover:text-red-500 transition-colors flex-shrink-0"
                   >
                     <FiTrash2 size={14} />
                   </button>
@@ -341,14 +335,12 @@ export default function BetSlip() {
               </div>
             </div>
 
-            {/* Minimum stake warning */}
             {totalStake > 0 && totalStake < MINIMUM_STAKE && (
               <div className="text-yellow-500 text-xs text-center">
                 Minimum stake is KSh {MINIMUM_STAKE}
               </div>
             )}
 
-            {/* Balance warning */}
             {totalStake > (user?.balance || 0) && (
               <div className="text-red-500 text-xs text-center">
                 Insufficient balance

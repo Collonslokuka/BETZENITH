@@ -42,22 +42,22 @@ export default function Footer() {
       ref={footerRef}
       className="bg-[#0f1219] border-t border-[#2a3042] mt-8 w-full relative footer-sink"
     >
-      <div className="ml-64"> {/* Space for left sidebar */}
-        <div className="max-w-7xl px-6 py-12">
+      <div className="ml-0 lg:ml-64"> {/* Space for left sidebar only on desktop */}
+        <div className="max-w-7xl px-4 sm:px-6 py-8 sm:py-12">
           {/* Branding and Concierge Support - Side by Side */}
-          <div className="grid grid-cols-2 gap-8 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 mb-8">
             {/* Left Column - BETZENITH and paragraph */}
             <div>
-              <h2 className="text-2xl font-bold text-white mb-3">
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-3">
                 BET<span className="text-[#00b3b3]">ZENITH</span>
               </h2>
-              <p className="text-base text-gray-400 whitespace-pre-line">
+              <p className="text-sm sm:text-base text-gray-400 whitespace-pre-line">
                 The pinnacle of luxury sports betting. Experience world-class odds,{'\n'}
                 unparalleled security, and a gaming environment designed for the elite.
               </p>
               {/* Social Media Icons */}
               <div className="mt-3">
-                <div className="flex space-x-5">
+                <div className="flex flex-wrap gap-3 sm:gap-5">
                   <a href="#" className="text-gray-400 hover:text-[#4267B2] transition-colors">
                     <FiFacebook size={18} />
                   </a>
@@ -79,14 +79,14 @@ export default function Footer() {
 
             {/* Right Column - Concierge Support */}
             <div>
-              <h3 className="text-white font-semibold mb-4 text-base">CONCIERGE SUPPORT</h3>
+              <h3 className="text-white font-semibold mb-4 text-sm sm:text-base">CONCIERGE SUPPORT</h3>
               {/* EMAIL */}
               <div className="mb-3">
                 <div className="flex items-center space-x-2">
                   <FiMail className="text-[#00b3b3]" size={14} />
                   <span className="text-[#00b3b3] text-xs font-medium">EMAIL</span>
                 </div>
-                <p className="text-gray-400 text-xs ml-7">vip-support@betzenith.com</p>
+                <p className="text-gray-400 text-xs ml-7 break-all">vip-support@betzenith.com</p>
               </div>
               {/* PHONE */}
               <div className="mb-3">
@@ -109,17 +109,17 @@ export default function Footer() {
           </div>
 
           {/* Divider Line */}
-          <div className="border-t border-[#2a3042] my-10"></div>
+          <div className="border-t border-[#2a3042] my-6 sm:my-10"></div>
 
           {/* Payment Methods & SSL SECURED & GLOBAL COMPLIANCE */}
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center space-x-5">
-              <FaCcVisa className="text-gray-400 text-4xl" />
-              <FaCcMastercard className="text-gray-400 text-4xl" />
-              <RiBitCoinFill className="text-gray-400 text-4xl" />
-              <SiEthereum className="text-gray-400 text-4xl" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0 py-3">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-5">
+              <FaCcVisa className="text-gray-400 text-3xl sm:text-4xl" />
+              <FaCcMastercard className="text-gray-400 text-3xl sm:text-4xl" />
+              <RiBitCoinFill className="text-gray-400 text-3xl sm:text-4xl" />
+              <SiEthereum className="text-gray-400 text-3xl sm:text-4xl" />
             </div>
-            <div className="flex items-center space-x-5">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-5">
               <span className="text-gray-400 text-xs font-bold flex items-center">
                 <FiLock className="mr-1" size={14} />
                 SSL SECURED
@@ -129,17 +129,17 @@ export default function Footer() {
           </div>
 
           {/* Divider Line */}
-          <div className="border-t border-[#2a3042] my-10"></div>
+          <div className="border-t border-[#2a3042] my-6 sm:my-10"></div>
 
           {/* TERMS PRIVACY RESPONSIBLE GAMING */}
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 text-xs text-gray-500">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <Link to="/terms" className="hover:text-[#00b3b3] transition-colors text-[11px]">TERMS</Link>
               <Link to="/privacy" className="hover:text-[#00b3b3] transition-colors text-[11px]">PRIVACY</Link>
               <Link to="/responsible-gaming" className="hover:text-[#00b3b3] transition-colors text-[11px]">RESPONSIBLE GAMING</Link>
               <span className="text-[11px]">© 2026 BETZENITH</span>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <span className="text-[11px] text-gray-500 border border-[#2a3042] rounded px-2 py-1">18+ ONLY</span>
               <span className="text-[11px] text-gray-500">GAMBLE RESPONSIBLY</span>
             </div>

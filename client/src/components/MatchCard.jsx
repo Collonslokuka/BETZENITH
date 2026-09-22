@@ -98,7 +98,7 @@ const AIPredictionBadge = ({ prediction, homeTeam, awayTeam }) => {
   return (
     <div className="mt-3 p-2.5 rounded-lg bg-[#0f1219] border border-[#2a3042]">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-wrap">
           <span className="text-sm">🤖</span>
           <span className="text-xs text-gray-400">AI Prediction:</span>
           <span
@@ -122,7 +122,7 @@ const AIPredictionBadge = ({ prediction, homeTeam, awayTeam }) => {
         <p className="text-xs text-gray-500 mt-2">{prediction.insight}</p>
       )}
       {prediction.probability && (
-        <div className="mt-2 flex items-center justify-between text-xs">
+        <div className="mt-2 flex items-center justify-between text-xs flex-wrap gap-1">
           <span className="text-gray-500">Win Probability:</span>
           <div className="flex space-x-3">
             <span className="text-green-400">H: {prediction.probability.home}%</span>
@@ -190,7 +190,6 @@ export default function MatchCard({ match }) {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  // Handle both MongoDB format and odds API format
   const matchId = match._id || match.id;
 
   const homeTeam = {
@@ -211,7 +210,6 @@ export default function MatchCard({ match }) {
     logo: match.awayTeam?.logo,
   };
 
-  // Format date
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -222,7 +220,6 @@ export default function MatchCard({ match }) {
     });
   };
 
-  // Format time
   const formatTime = (dateString) => {
     if (!dateString) return '19:00';
     const date = new Date(dateString);
@@ -232,15 +229,12 @@ export default function MatchCard({ match }) {
     });
   };
 
-  // Handle market click with closure check
   const handleMarketClick = (market, category, index) => {
-    // Match is finished or market disabled
     if (match.status === 'FINISHED' || market.isActive === false) {
       toast.error('Market closed');
       return;
     }
 
-    // Betting closed due to final stages
     if (isBettingClosed(match)) {
       toast.error(getBettingClosedReason(match));
       return;
@@ -258,7 +252,6 @@ export default function MatchCard({ match }) {
     setSelectedMarket(`${category}-${index}`);
   };
 
-  // Get markets (fallback for API-format matches)
   const getOdds = () => {
     if (match.markets && match.markets.length > 0) {
       return match.markets;
@@ -275,37 +268,37 @@ export default function MatchCard({ match }) {
   const closedReason = bettingClosed ? getBettingClosedReason(match) : null;
 
   return (
-    <div className="bg-[#1a1f2e] rounded-lg p-5 border border-gray-800 hover:border-[#2e7d32]/30 transition-all duration-300 hover:shadow-lg hover:shadow-[#2e7d32]/5">
+    <div className="bg-[#1a1f2e] rounded-lg p-3 sm:p-5 border border-gray-800 hover:border-[#2e7d32]/30 transition-all duration-300 hover:shadow-lg hover:shadow-[#2e7d32]/5">
       {/* League Header */}
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-sm text-gray-400">{match.league || 'Unknown League'}</span>
-        <div className="text-right">
-          <span className="text-white text-sm">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 mb-3 sm:mb-4">
+        <span className="text-xs sm:text-sm text-gray-400 truncate">{match.league || 'Unknown League'}</span>
+        <div className="text-left sm:text-right flex sm:block items-center gap-2">
+          <span className="text-white text-xs sm:text-sm">
             {formatTime(match.startsAt || match.date)}
           </span>
-          <span className="text-gray-500 text-xs ml-2">
+          <span className="text-gray-500 text-xs sm:ml-2">
             {formatDate(match.startsAt || match.date)}
           </span>
         </div>
       </div>
 
       {/* Teams Row */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3 flex-1">
-          <span className="text-2xl font-bold text-white">{homeTeam.abbreviation}</span>
-          <span className="text-white font-medium">{homeTeam.name}</span>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+          <span className="text-lg sm:text-2xl font-bold text-white flex-shrink-0">{homeTeam.abbreviation}</span>
+          <span className="text-white font-medium text-sm sm:text-base truncate">{homeTeam.name}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:justify-end min-w-0">
           <MatchStatus match={match} />
-          <span className="text-white font-medium">{awayTeam.name}</span>
-          <span className="text-2xl font-bold text-white">{awayTeam.abbreviation}</span>
+          <span className="text-white font-medium text-sm sm:text-base truncate">{awayTeam.name}</span>
+          <span className="text-lg sm:text-2xl font-bold text-white flex-shrink-0">{awayTeam.abbreviation}</span>
         </div>
       </div>
 
       {/* Score Display */}
       {match.score && match.status !== 'SCHEDULED' && (
-        <div className="text-center mb-4">
-          <span className="text-xl font-bold text-[#2e7d32]">
+        <div className="text-center mb-3 sm:mb-4">
+          <span className="text-lg sm:text-xl font-bold text-[#2e7d32]">
             {typeof match.score === 'object'
               ? `${match.score.home || 0} - ${match.score.away || 0}`
               : match.score}
@@ -335,9 +328,9 @@ export default function MatchCard({ match }) {
       {/* Match Winner Market */}
       <div className="mt-4 mb-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-white font-medium">Match Winner</span>
+          <span className="text-xs sm:text-sm text-white font-medium">Match Winner</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           {markets.slice(0, 3).map((market, idx) => {
             const isDisabled = match.status === 'FINISHED' || market.isActive === false || bettingClosed;
             return (
@@ -346,7 +339,7 @@ export default function MatchCard({ match }) {
                 onClick={() => handleMarketClick(market, 'winner', idx)}
                 disabled={isDisabled}
                 className={`
-                  bg-[#2a2f3f] p-3 rounded text-center transition-all duration-200
+                  bg-[#2a2f3f] p-2 sm:p-3 rounded text-center transition-all duration-200
                   ${
                     isDisabled
                       ? 'opacity-50 cursor-not-allowed'
@@ -355,8 +348,8 @@ export default function MatchCard({ match }) {
                   ${selectedMarket === `winner-${idx}` ? 'ring-2 ring-[#2e7d32]' : ''}
                 `}
               >
-                <div className="text-xs text-gray-400 mb-1">{market.name}</div>
-                <div className="text-lg font-bold text-[#2e7d32]">
+                <div className="text-[10px] sm:text-xs text-gray-400 mb-1 truncate">{market.name}</div>
+                <div className="text-sm sm:text-lg font-bold text-[#2e7d32]">
                   {market.odds?.toFixed(2) || market.price?.toFixed(2) || '2.00'}
                 </div>
               </button>
@@ -369,9 +362,9 @@ export default function MatchCard({ match }) {
       {markets.length > 3 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-white font-medium">More Markets</span>
+            <span className="text-xs sm:text-sm text-white font-medium">More Markets</span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
             {markets.slice(3, 6).map((market, idx) => {
               const isDisabled =
                 match.status === 'FINISHED' || market.isActive === false || bettingClosed;
@@ -381,7 +374,7 @@ export default function MatchCard({ match }) {
                   onClick={() => handleMarketClick(market, 'more', idx + 3)}
                   disabled={isDisabled}
                   className={`
-                    bg-[#2a2f3f] p-3 rounded text-center transition-all duration-200
+                    bg-[#2a2f3f] p-2 sm:p-3 rounded text-center transition-all duration-200
                     ${
                       isDisabled
                         ? 'opacity-50 cursor-not-allowed'
@@ -390,8 +383,8 @@ export default function MatchCard({ match }) {
                     ${selectedMarket === `more-${idx + 3}` ? 'ring-2 ring-[#2e7d32]' : ''}
                   `}
                 >
-                  <div className="text-xs text-gray-400 mb-1">{market.name}</div>
-                  <div className="text-lg font-bold text-[#2e7d32]">
+                  <div className="text-[10px] sm:text-xs text-gray-400 mb-1 truncate">{market.name}</div>
+                  <div className="text-sm sm:text-lg font-bold text-[#2e7d32]">
                     {market.odds?.toFixed(2) || market.price?.toFixed(2) || '2.00'}
                   </div>
                 </button>

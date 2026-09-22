@@ -1,5 +1,5 @@
 // src/pages/Home.jsx
-import api from '../services/axios';   // ← NEW: shared instance
+import api from '../services/axios';
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -34,16 +34,16 @@ const JackpotCounter = () => {
   }, []);
   
   return (
-    <div className="bg-gradient-to-r from-yellow-600 to-orange-600 rounded-xl p-6 mb-6 shadow-lg transform hover:scale-[1.02] transition-all duration-300">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-white text-sm uppercase tracking-wider font-semibold">🔥 Current Jackpot</h3>
-          <div className="text-4xl font-bold text-white mt-2">
+    <div className="bg-gradient-to-r from-yellow-600 to-orange-600 rounded-xl p-4 sm:p-6 shadow-lg transform hover:scale-[1.02] transition-all duration-300">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-white text-xs sm:text-sm uppercase tracking-wider font-semibold">🔥 Current Jackpot</h3>
+          <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mt-1 sm:mt-2 truncate">
             KSh {jackpot.toLocaleString()}
           </div>
-          <div className="text-yellow-200 text-xs mt-2">Rolling over every week • 3 days left</div>
+          <div className="text-yellow-200 text-[10px] sm:text-xs mt-1 sm:mt-2">Rolling over every week • 3 days left</div>
         </div>
-        <div className="text-5xl opacity-50">🏆</div>
+        <div className="text-3xl sm:text-5xl opacity-50 flex-shrink-0">🏆</div>
       </div>
       <div className="mt-3 h-1.5 bg-yellow-400/30 rounded-full overflow-hidden">
         <div className="h-full w-2/3 bg-yellow-400 rounded-full animate-pulse"></div>
@@ -78,33 +78,33 @@ const WinnersFeed = () => {
   }, []);
   
   return (
-    <div className="bg-[#1a1f2e] rounded-xl p-4 border border-[#2a3042] mb-6">
-      <h3 className="text-white font-bold mb-3 flex items-center">
+    <div className="bg-[#1a1f2e] rounded-xl p-3 sm:p-4 border border-[#2a3042]">
+      <h3 className="text-white font-bold mb-3 flex items-center text-sm sm:text-base">
         <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></span>
         Recent Winners
         <span className="ml-2 text-xs text-gray-500 font-normal">Live feed</span>
       </h3>
-      <div className="space-y-3">
+      <div className="space-y-2 sm:space-y-3">
         {winners.map((winner, i) => (
-          <div key={i} className="flex justify-between items-center text-sm group hover:bg-[#2a2f3f] p-2 rounded-lg transition-colors">
-            <div className="flex items-center space-x-2">
-              <span className="w-6 h-6 bg-green-500/20 rounded-full flex items-center justify-center text-xs text-green-400">
+          <div key={i} className="flex justify-between items-center text-xs sm:text-sm group hover:bg-[#2a2f3f] p-1.5 sm:p-2 rounded-lg transition-colors gap-2">
+            <div className="flex items-center space-x-2 min-w-0 flex-1">
+              <span className="w-6 h-6 bg-green-500/20 rounded-full flex items-center justify-center text-xs text-green-400 flex-shrink-0">
                 {i === 0 ? '🎉' : '💰'}
               </span>
-              <div>
+              <div className="min-w-0 flex-1">
                 <span className="text-gray-300">{winner.username}</span>
-                <span className="text-gray-500 text-xs ml-2">won on {winner.game}</span>
+                <span className="text-gray-500 text-[10px] sm:text-xs ml-1 sm:ml-2 truncate">on {winner.game}</span>
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-green-400 font-bold">+KSh {winner.amount.toLocaleString()}</span>
-              <span className="text-gray-500 text-xs ml-2">{winner.time}</span>
+            <div className="text-right flex-shrink-0">
+              <div className="text-green-400 font-bold text-xs sm:text-sm">+KSh {winner.amount.toLocaleString()}</div>
+              <div className="text-gray-500 text-[10px] sm:text-xs">{winner.time}</div>
             </div>
           </div>
         ))}
       </div>
       <div className="mt-3 pt-2 border-t border-[#2a3042] text-center">
-        <span className="text-xs text-gray-500">🎲 Over 2,500 winners this week!</span>
+        <span className="text-[10px] sm:text-xs text-gray-500">🎲 Over 2,500 winners this week!</span>
       </div>
     </div>
   );
@@ -121,13 +121,11 @@ export default function Home() {
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
 
-  // Match section states
   const [liveMatches, setLiveMatches] = useState([]);
   const [upcomingMatches, setUpcomingMatches] = useState([]);
   const [finishedMatches, setFinishedMatches] = useState([]);
   const [selectedMatchType, setSelectedMatchType] = useState('upcoming');
 
-  // Refs for horizontal scrolling
   const topLeaguesScrollRef = useRef(null);
   const royalHotsScrollRef = useRef(null);
 
@@ -147,7 +145,6 @@ export default function Home() {
     };
   }, []);
 
-  // ✅ FIXED: Use shared api instance (goes to Render, not Vercel)
   const fetchMatchesByType = async () => {
     try {
       const [liveRes, scheduledRes, finishedRes] = await Promise.all([
@@ -278,79 +275,23 @@ export default function Home() {
   ];
 
   const topLeagues = [
-    {
-      name: 'EPL',
-      count: 20,
-      icon: <img src="https://media.api-sports.io/football/leagues/39.png" alt="EPL" className="w-full h-full object-contain" />
-    },
-    {
-      name: 'UEFA Champions League',
-      count: 21,
-      icon: <img src="https://media.api-sports.io/football/leagues/2.png" alt="Champions League" className="w-full h-full object-contain" />
-    },
-    {
-      name: 'UEFA Europa League',
-      count: 24,
-      icon: <img src="https://media.api-sports.io/football/leagues/3.png" alt="Europa League" className="w-full h-full object-contain" />
-    },
-    {
-      name: 'La Liga - Spain',
-      count: 20,
-      icon: <img src="https://media.api-sports.io/football/leagues/140.png" alt="La Liga" className="w-full h-full object-contain" />
-    },
-    {
-      name: 'Championship',
-      count: 24,
-      icon: <img src="https://media.api-sports.io/football/leagues/40.png" alt="Championship" className="w-full h-full object-contain" />
-    },
-    {
-      name: 'Serie A - Italy',
-      count: 19,
-      icon: <img src="https://media.api-sports.io/football/leagues/135.png" alt="Serie A" className="w-full h-full object-contain" />
-    },
-    {
-      name: 'Bundesliga - Germany',
-      count: 20,
-      icon: <img src="https://media.api-sports.io/football/leagues/78.png" alt="Bundesliga" className="w-full h-full object-contain" />
-    },
+    { name: 'EPL', count: 20, icon: <img src="https://media.api-sports.io/football/leagues/39.png" alt="EPL" className="w-full h-full object-contain" /> },
+    { name: 'UEFA Champions League', count: 21, icon: <img src="https://media.api-sports.io/football/leagues/2.png" alt="Champions League" className="w-full h-full object-contain" /> },
+    { name: 'UEFA Europa League', count: 24, icon: <img src="https://media.api-sports.io/football/leagues/3.png" alt="Europa League" className="w-full h-full object-contain" /> },
+    { name: 'La Liga - Spain', count: 20, icon: <img src="https://media.api-sports.io/football/leagues/140.png" alt="La Liga" className="w-full h-full object-contain" /> },
+    { name: 'Championship', count: 24, icon: <img src="https://media.api-sports.io/football/leagues/40.png" alt="Championship" className="w-full h-full object-contain" /> },
+    { name: 'Serie A - Italy', count: 19, icon: <img src="https://media.api-sports.io/football/leagues/135.png" alt="Serie A" className="w-full h-full object-contain" /> },
+    { name: 'Bundesliga - Germany', count: 20, icon: <img src="https://media.api-sports.io/football/leagues/78.png" alt="Bundesliga" className="w-full h-full object-contain" /> },
   ];
 
   const allSportsWithLeagues = [
-    {
-      name: 'Football',
-      icon: <GiSoccerBall className="text-[#2e7d32]" />,
-      leagues: ['EPL', 'UEFA Champions League', 'UEFA Europa League', 'La Liga - Spain', 'Serie A - Italy', 'Bundesliga - Germany', 'Ligue 1 - France', 'Championship']
-    },
-    {
-      name: 'Basketball',
-      icon: <GiBasketballBall className="text-[#2e7d32]" />,
-      leagues: ['NBA', 'EuroLeague', 'WNBA', 'NCAA Basketball', 'ACB', 'NBL']
-    },
-    {
-      name: 'American Football',
-      icon: <GiAmericanFootballHelmet className="text-[#2e7d32]" />,
-      leagues: ['NFL', 'NCAAF', 'CFL', 'XFL', 'Super Bowl']
-    },
-    {
-      name: 'Baseball',
-      icon: <GiBaseballBat className="text-[#2e7d32]" />,
-      leagues: ['MLB', 'MLB Preseason', 'NPB', 'KBO', 'College Baseball']
-    },
-    {
-      name: 'Ice Hockey',
-      icon: <GiHockey className="text-[#2e7d32]" />,
-      leagues: ['NHL', 'KHL', 'World Championship', 'SHL', 'Liiga']
-    },
-    {
-      name: 'Cricket',
-      icon: <GiCricketBat className="text-[#2e7d32]" />,
-      leagues: ['IPL', 'The Ashes', 'Big Bash', 'T20 World Cup', 'World Cup', 'County Championship']
-    },
-    {
-      name: 'MMA',
-      icon: <GiBoxingGlove className="text-[#2e7d32]" />,
-      leagues: ['UFC', 'Bellator', 'ONE Championship', 'PFL', 'Boxing']
-    }
+    { name: 'Football', icon: <GiSoccerBall className="text-[#2e7d32]" />, leagues: ['EPL', 'UEFA Champions League', 'UEFA Europa League', 'La Liga - Spain', 'Serie A - Italy', 'Bundesliga - Germany', 'Ligue 1 - France', 'Championship'] },
+    { name: 'Basketball', icon: <GiBasketballBall className="text-[#2e7d32]" />, leagues: ['NBA', 'EuroLeague', 'WNBA', 'NCAA Basketball', 'ACB', 'NBL'] },
+    { name: 'American Football', icon: <GiAmericanFootballHelmet className="text-[#2e7d32]" />, leagues: ['NFL', 'NCAAF', 'CFL', 'XFL', 'Super Bowl'] },
+    { name: 'Baseball', icon: <GiBaseballBat className="text-[#2e7d32]" />, leagues: ['MLB', 'MLB Preseason', 'NPB', 'KBO', 'College Baseball'] },
+    { name: 'Ice Hockey', icon: <GiHockey className="text-[#2e7d32]" />, leagues: ['NHL', 'KHL', 'World Championship', 'SHL', 'Liiga'] },
+    { name: 'Cricket', icon: <GiCricketBat className="text-[#2e7d32]" />, leagues: ['IPL', 'The Ashes', 'Big Bash', 'T20 World Cup', 'World Cup', 'County Championship'] },
+    { name: 'MMA', icon: <GiBoxingGlove className="text-[#2e7d32]" />, leagues: ['UFC', 'Bellator', 'ONE Championship', 'PFL', 'Boxing'] }
   ];
 
   const quickAccess = [
@@ -363,7 +304,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0c14]" style={{ overscrollBehavior: 'none' }}>
       {/* Hero Carousel */}
-      <div className="relative w-full h-[400px] overflow-hidden">
+      <div className="relative w-full h-[260px] sm:h-[320px] md:h-[400px] overflow-hidden">
         <div
           className="flex transition-transform duration-700 ease-in-out h-full"
           style={{ transform: `translateX(-${currentSlide * 100}%)` }}
@@ -377,16 +318,16 @@ export default function Home() {
                 }}></div>
               </div>
               <div className="absolute inset-0 flex items-center container mx-auto px-4">
-                <div className="flex-1">
-                  <span className="text-8xl opacity-20 absolute top-10 right-20 rotate-12">{slide.icon}</span>
-                  <h1 className="text-6xl font-bold text-white mb-2">{slide.title}</h1>
-                  <h2 className="text-5xl font-bold text-white/90 mb-4">{slide.subtitle}</h2>
-                  <p className="text-xl text-white/80 mb-6 max-w-lg">{slide.description}</p>
-                  <button className="px-8 py-3 bg-[#2e7d32] text-white font-bold rounded-lg hover:bg-[#1e5a22] transition-colors shadow-lg">
+                <div className="flex-1 min-w-0">
+                  <span className="hidden md:block text-8xl opacity-20 absolute top-10 right-20 rotate-12">{slide.icon}</span>
+                  <h1 className="text-2xl sm:text-4xl md:text-6xl font-bold text-white mb-1 sm:mb-2">{slide.title}</h1>
+                  <h2 className="text-xl sm:text-3xl md:text-5xl font-bold text-white/90 mb-2 sm:mb-4">{slide.subtitle}</h2>
+                  <p className="text-xs sm:text-base md:text-xl text-white/80 mb-3 sm:mb-6 max-w-lg">{slide.description}</p>
+                  <button className="px-4 sm:px-6 md:px-8 py-2 md:py-3 bg-[#2e7d32] text-white font-bold rounded-lg hover:bg-[#1e5a22] transition-colors shadow-lg text-xs sm:text-sm md:text-base">
                     {slide.cta}
                   </button>
                 </div>
-                <div className="flex-1 flex justify-end">
+                <div className="hidden md:flex flex-1 justify-end">
                   <div className="w-96 h-64 bg-black/30 backdrop-blur-lg rounded-2xl border border-[#ffd700]/20 p-6">
                     <div className="text-[#ffd700] text-sm mb-4">FEATURED</div>
                     <div className="space-y-4">
@@ -410,14 +351,14 @@ export default function Home() {
           ))}
         </div>
         
-        <button onClick={prevSlide} className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/30 backdrop-blur-sm border border-white/20 rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors z-10">
+        <button onClick={prevSlide} className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 bg-black/30 backdrop-blur-sm border border-white/20 rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors z-10">
           <FiChevronLeft size={20} />
         </button>
-        <button onClick={nextSlide} className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/30 backdrop-blur-sm border border-white/20 rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors z-10">
+        <button onClick={nextSlide} className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 bg-black/30 backdrop-blur-sm border border-white/20 rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors z-10">
           <FiChevronRight size={20} />
         </button>
         
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-2 z-10">
+        <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex space-x-2 z-10">
           {slides.map((_, index) => (
             <button
               key={index}
@@ -429,33 +370,33 @@ export default function Home() {
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-8">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
           <JackpotCounter />
           <WinnersFeed />
         </div>
 
         {/* Top Leagues */}
-        <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-5 mb-5 relative max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-white font-semibold">Top Leagues</h2>
-            <div className="flex items-center space-x-2">
-              <span className="text-xs bg-[#2e7d32]/10 text-[#2e7d32] px-2 py-1 rounded">ACCUMULATOR BETS</span>
-              <span className="text-xs text-gray-500">3x 5x - Multiply Your Win</span>
+        <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-3 sm:p-5 mb-4 sm:mb-5 relative max-w-5xl mx-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
+            <h2 className="text-white font-semibold text-sm sm:text-base">Top Leagues</h2>
+            <div className="flex items-center flex-wrap gap-2">
+              <span className="text-[10px] sm:text-xs bg-[#2e7d32]/10 text-[#2e7d32] px-2 py-1 rounded">ACCUMULATOR BETS</span>
+              <span className="text-[10px] sm:text-xs text-gray-500">3x 5x - Multiply Your Win</span>
             </div>
           </div>
-          <button onClick={scrollTopLeaguesLeft} className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
+          <button onClick={scrollTopLeaguesLeft} className="hidden sm:flex absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors items-center justify-center">
             <FiChevronLeftIcon size={20} />
           </button>
-          <button onClick={scrollTopLeaguesRight} className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
+          <button onClick={scrollTopLeaguesRight} className="hidden sm:flex absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors items-center justify-center">
             <FiChevronRightIcon size={20} />
           </button>
-          <div ref={topLeaguesScrollRef} className="flex overflow-x-auto pb-2 gap-4 hide-scrollbar scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <div ref={topLeaguesScrollRef} className="flex overflow-x-auto pb-2 gap-3 sm:gap-4 hide-scrollbar scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {topLeagues.map(league => (
               <div
                 key={league.name}
                 onClick={() => handleLeagueClick(league.name)}
-                className="flex-shrink-0 w-[160px] flex flex-col items-center border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105"
+                className="flex-shrink-0 w-[110px] sm:w-[140px] md:w-[160px] flex flex-col items-center border-[18px] sm:border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105"
                 style={{ backgroundColor: '#000000', aspectRatio: '1/1' }}
               >
                 <div className="absolute inset-x-0 top-[-12px] bottom-[20px] m-[0] bg-white rounded-none flex items-end justify-center overflow-hidden">
@@ -464,7 +405,7 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="absolute inset-x-0 bottom-[-8px] h-[25px] bg-[#2e7d32]"></div>
-                <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium line-clamp-1 px-1 z-10">
+                <span className="absolute bottom-[-8px] left-0 right-0 text-center text-[10px] sm:text-xs text-white font-medium line-clamp-1 px-1 z-10">
                   {league.name}
                 </span>
               </div>
@@ -473,41 +414,41 @@ export default function Home() {
         </div>
 
         {/* Royal Hots */}
-        <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-5 mb-5 relative max-w-5xl mx-auto">
-          <h2 className="text-white font-semibold mb-4 flex items-center">
+        <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-3 sm:p-5 mb-4 sm:mb-5 relative max-w-5xl mx-auto">
+          <h2 className="text-white font-semibold mb-3 sm:mb-4 flex items-center text-sm sm:text-base">
             <span className="w-1 h-5 bg-[#2e7d32] rounded-full mr-3"></span>
             Royal Hots
           </h2>
-          <button onClick={scrollRoyalHotsLeft} className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
+          <button onClick={scrollRoyalHotsLeft} className="hidden sm:flex absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors items-center justify-center">
             <FiChevronLeftIcon size={20} />
           </button>
-          <button onClick={scrollRoyalHotsRight} className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors">
+          <button onClick={scrollRoyalHotsRight} className="hidden sm:flex absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors items-center justify-center">
             <FiChevronRightIcon size={20} />
           </button>
           <div ref={royalHotsScrollRef} className="overflow-x-auto pb-2 scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            <div className="flex gap-4 mb-4">
+            <div className="flex gap-3 sm:gap-4 mb-4">
               {royalHotsGames.slice(0, 6).map((game, index) => (
-                <div key={index} onClick={() => {}} className="flex-shrink-0 w-[160px] aspect-square border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105" style={{ backgroundColor: '#000000' }}>
+                <div key={index} onClick={() => {}} className="flex-shrink-0 w-[110px] sm:w-[140px] md:w-[160px] aspect-square border-[18px] sm:border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105" style={{ backgroundColor: '#000000' }}>
                   <div className="absolute inset-0 m-[0] bg-white rounded-none flex items-center justify-center overflow-hidden">
                     <div className="w-3/4 h-3/4 flex items-center justify-center transition-transform duration-300 hover:scale-125">
                       <span className="text-[#ffd700] w-full h-full flex items-center justify-center text-2xl">{game.icon}</span>
                     </div>
                   </div>
                   <div className="absolute inset-x-0 bottom-[-8px] h-[25px] bg-[#2e7d32]"></div>
-                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium px-1 z-10">{game.name}</span>
+                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-[10px] sm:text-xs text-white font-medium px-1 z-10 truncate">{game.name}</span>
                 </div>
               ))}
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-3 sm:gap-4">
               {royalHotsGames.slice(6, 12).map((game, index) => (
-                <div key={index + 6} onClick={() => {}} className="flex-shrink-0 w-[160px] aspect-square border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105" style={{ backgroundColor: '#000000' }}>
+                <div key={index + 6} onClick={() => {}} className="flex-shrink-0 w-[110px] sm:w-[140px] md:w-[160px] aspect-square border-[18px] sm:border-[25px] border-[#2e7d32] rounded-2xl relative cursor-pointer transition-all duration-300 hover:scale-105" style={{ backgroundColor: '#000000' }}>
                   <div className="absolute inset-0 m-[0] bg-white rounded-none flex items-center justify-center overflow-hidden">
                     <div className="w-3/4 h-3/4 flex items-center justify-center transition-transform duration-300 hover:scale-125">
                       <span className="text-[#ffd700] w-full h-full flex items-center justify-center text-2xl">{game.icon}</span>
                     </div>
                   </div>
                   <div className="absolute inset-x-0 bottom-[-8px] h-[25px] bg-[#2e7d32]"></div>
-                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-xs text-white font-medium px-1 z-10">{game.name}</span>
+                  <span className="absolute bottom-[-8px] left-0 right-0 text-center text-[10px] sm:text-xs text-white font-medium px-1 z-10 truncate">{game.name}</span>
                 </div>
               ))}
             </div>
@@ -515,15 +456,15 @@ export default function Home() {
         </div>
 
         {/* Live Sports Panel */}
-        <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-5 max-w-5xl mx-auto mb-8">
-          <h3 className="text-white font-semibold mb-4 flex items-center">
+        <div className="bg-[#0f1219] rounded-lg border border-[#2a3042] p-3 sm:p-5 max-w-5xl mx-auto mb-6 sm:mb-8">
+          <h3 className="text-white font-semibold mb-3 sm:mb-4 flex items-center text-sm sm:text-base">
             <span className="w-1 h-5 bg-[#2e7d32] rounded-full mr-3"></span>
             LiveSports
           </h3>
           <div className="mb-4">
             <div className="flex items-center space-x-2 mb-3">
               <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
-              <span className="text-sm text-white">Football</span>
+              <span className="text-xs sm:text-sm text-white">Football</span>
             </div>
             <div className="space-y-2 pl-3">
               <div onClick={() => handleLeagueClick('Bundesliga - Germany')} className="text-xs text-gray-400 hover:text-white cursor-pointer flex items-center justify-between group">
@@ -544,31 +485,31 @@ export default function Home() {
 
         {/* Match Sections */}
         <div className="max-w-5xl mx-auto mt-4">
-          <div className="flex space-x-2 mb-4 bg-[#0f1219] p-2 rounded-lg border border-[#2a3042]">
+          <div className="flex gap-1 sm:gap-2 mb-4 bg-[#0f1219] p-1.5 sm:p-2 rounded-lg border border-[#2a3042]">
             <button
               onClick={() => setSelectedMatchType('live')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedMatchType === 'live' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
+              className={`flex-1 px-1 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-medium transition-colors ${selectedMatchType === 'live' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
               🔴 LIVE ({liveMatches.length})
             </button>
             <button
               onClick={() => setSelectedMatchType('upcoming')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedMatchType === 'upcoming' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
+              className={`flex-1 px-1 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-medium transition-colors ${selectedMatchType === 'upcoming' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
               📅 SCHEDULED ({upcomingMatches.length})
             </button>
             <button
               onClick={() => setSelectedMatchType('finished')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedMatchType === 'finished' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
+              className={`flex-1 px-1 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-medium transition-colors ${selectedMatchType === 'finished' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
               🏁 FINISHED ({finishedMatches.length})
             </button>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {selectedMatchType === 'live' && liveMatches.length === 0 && (
-              <div className="bg-[#1a1f2e] rounded-lg p-8 text-center border border-[#2a3042]">
-                <p className="text-gray-400">No live matches at the moment</p>
+              <div className="bg-[#1a1f2e] rounded-lg p-6 sm:p-8 text-center border border-[#2a3042]">
+                <p className="text-gray-400 text-sm">No live matches at the moment</p>
                 <p className="text-xs text-gray-500 mt-2">Check back soon for live action!</p>
               </div>
             )}
@@ -577,8 +518,8 @@ export default function Home() {
             ))}
             
             {selectedMatchType === 'upcoming' && upcomingMatches.length === 0 && (
-              <div className="bg-[#1a1f2e] rounded-lg p-8 text-center border border-[#2a3042]">
-                <p className="text-gray-400">No scheduled matches available</p>
+              <div className="bg-[#1a1f2e] rounded-lg p-6 sm:p-8 text-center border border-[#2a3042]">
+                <p className="text-gray-400 text-sm">No scheduled matches available</p>
                 <p className="text-xs text-gray-500 mt-2">New matches will appear here soon</p>
               </div>
             )}
@@ -587,8 +528,8 @@ export default function Home() {
             ))}
             
             {selectedMatchType === 'finished' && finishedMatches.length === 0 && (
-              <div className="bg-[#1a1f2e] rounded-lg p-8 text-center border border-[#2a3042]">
-                <p className="text-gray-400">No finished matches</p>
+              <div className="bg-[#1a1f2e] rounded-lg p-6 sm:p-8 text-center border border-[#2a3042]">
+                <p className="text-gray-400 text-sm">No finished matches</p>
                 <p className="text-xs text-gray-500 mt-2">Check back after matches are completed</p>
               </div>
             )}
