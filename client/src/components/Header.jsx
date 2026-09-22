@@ -5,7 +5,7 @@ import { useBetSlip } from '../context/BetSlipContext';
 import { FiUser, FiLogOut, FiMenu, FiX, FiDollarSign, FiTrendingUp, FiSun, FiMoon } from 'react-icons/fi';
 import api from '../services/axios';
 
-export default function Header() {
+export default function Header({ onOpenSidebar }) {
   const { user, logout, isAuthenticated } = useAuth();
   const { selectionCount } = useBetSlip();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -30,15 +30,15 @@ export default function Header() {
   useEffect(() => {
     if (isAuthenticated && user) {
       fetchBalance();
-      
+
       const handleBalanceUpdate = (event) => {
         if (event.detail && event.detail.newBalance !== undefined) {
           setBalance(event.detail.newBalance);
         }
       };
-      
+
       window.addEventListener('balance-update', handleBalanceUpdate);
-      
+
       return () => {
         window.removeEventListener('balance-update', handleBalanceUpdate);
       };
@@ -77,16 +77,27 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-[#0f1219] border-b border-[#2a3042] sticky top-0 z-50 ml-64">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-20">
-          {/* Logo - BETZENITH */}
-          <Link to="/" className="flex items-center space-x-2 group">
-            <span className="text-2xl font-bold text-white">
-              BET<span className="text-[#2e7d32] group-hover:text-[#3e9142] transition-colors">ZENITH</span>
-            </span>
-            <span className="text-xs bg-[#2e7d32]/10 text-[#2e7d32] px-2 py-1 rounded-full">PREMIUM</span>
-          </Link>
+    <header className="bg-[#0f1219] border-b border-[#2a3042] sticky top-0 z-30 ml-0 lg:ml-64">
+      <div className="container mx-auto px-3 sm:px-4">
+        <div className="flex items-center justify-between h-16 sm:h-20 gap-2">
+          {/* Left side: hamburger (mobile/tablet) + logo */}
+          <div className="flex items-center space-x-2 min-w-0">
+            <button
+              onClick={onOpenSidebar}
+              className="lg:hidden p-2 text-gray-300 hover:text-[#2e7d32] transition-colors flex-shrink-0"
+              aria-label="Open leagues menu"
+            >
+              <FiMenu size={22} />
+            </button>
+
+            {/* Logo - BETZENITH */}
+            <Link to="/" className="flex items-center space-x-2 group min-w-0">
+              <span className="text-xl sm:text-2xl font-bold text-white whitespace-nowrap">
+                BET<span className="text-[#2e7d32] group-hover:text-[#3e9142] transition-colors">ZENITH</span>
+              </span>
+              <span className="hidden sm:inline text-xs bg-[#2e7d32]/10 text-[#2e7d32] px-2 py-1 rounded-full">PREMIUM</span>
+            </Link>
+          </div>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
@@ -121,7 +132,7 @@ export default function Header() {
                   <FiDollarSign className="text-[#2e7d32]" />
                   <span className="text-white font-bold">KSh {balance.toLocaleString()}</span>
                 </div>
-                
+
                 {/* Profile Dropdown */}
                 <div className="relative">
                   <button
@@ -214,13 +225,32 @@ export default function Header() {
             )}
           </nav>
 
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden text-gray-300 hover:text-[#2e7d32] transition-colors"
-          >
-            {isMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
-          </button>
+          {/* Mobile / tablet right side: compact balance + bet slip + account button */}
+          <div className="flex items-center space-x-2 md:hidden">
+            {isAuthenticated && (
+              <Link to="/deposit" className="flex items-center space-x-1 bg-[#1a1f2e] px-2.5 py-1.5 rounded-lg border border-[#2a3042]">
+                <FiDollarSign className="text-[#2e7d32]" size={14} />
+                <span className="text-white text-xs font-bold">KSh {balance.toLocaleString()}</span>
+              </Link>
+            )}
+
+            {selectionCount > 0 && (
+              <Link to="/bet-slip" className="relative p-2 bg-[#2e7d32] text-white rounded-lg">
+                <FiTrendingUp size={16} />
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  {selectionCount}
+                </span>
+              </Link>
+            )}
+
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-2 text-gray-300 hover:text-[#2e7d32] transition-colors"
+              aria-label="Account menu"
+            >
+              {isMenuOpen ? <FiX size={22} /> : <FiUser size={22} />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Menu */}

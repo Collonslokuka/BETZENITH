@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   FiShield, FiChevronDown, FiChevronUp, FiStar, FiBarChart2, FiTrendingUp,
-  FiHome, FiCalendar, FiTv, FiLock
+  FiHome, FiCalendar, FiTv, FiLock, FiX
 } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 
@@ -60,6 +60,8 @@ const leagueLogos = {
 };
 
 export default function Sidebar({
+  isOpen = false,
+  onClose = () => {},
   topLeagues,
   allSportsWithLeagues,
   quickAccess,
@@ -76,16 +78,28 @@ export default function Sidebar({
     }
     // Navigate to league page
     navigate(`/league/${encodeURIComponent(leagueName)}`);
+    onClose();
   };
 
   return (
-    <aside className="w-64 fixed left-0 top-0 hidden lg:block bg-[#0f1219] border-r border-[#2a3042] h-full overflow-y-auto z-50">
+    <aside
+      className={`w-64 fixed left-0 top-0 h-full bg-[#0f1219] border-r border-[#2a3042] overflow-y-auto z-50 transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
       <div className="p-4 h-full">
-        {/* BETZENITH logo */}
-        <div className="mb-6">
-          <Link to="/" className="text-2xl font-bold text-white">
+        {/* BETZENITH logo + mobile close button */}
+        <div className="mb-6 flex items-center justify-between">
+          <Link to="/" className="text-2xl font-bold text-white" onClick={onClose}>
             BET<span className="text-[#00b3b3]">ZENITH</span>
           </Link>
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1.5 rounded-lg hover:bg-[#1a1f2e] transition-colors"
+            aria-label="Close menu"
+          >
+            <FiX className="text-gray-400" size={20} />
+          </button>
         </div>
 
         {/* Homepage, Pre-match, Live */}
@@ -93,6 +107,7 @@ export default function Sidebar({
           <Link
             to="/"
             className="flex items-center space-x-3 px-3 py-2 bg-[#1a1f2e] rounded-lg mb-1"
+            onClick={onClose}
           >
             <FiHome className="text-[#00b3b3]" size={18} />
             <span className="text-white text-sm font-medium">Homepage</span>
@@ -100,6 +115,7 @@ export default function Sidebar({
           <Link
             to="/pre-match"
             className="flex items-center space-x-3 px-3 py-2 hover:bg-[#1a1f2e] rounded-lg mb-1 cursor-pointer transition-colors"
+            onClick={onClose}
           >
             <FiCalendar className="text-gray-400" size={18} />
             <span className="text-gray-400 hover:text-white text-sm font-medium">Pre-match</span>
@@ -107,6 +123,7 @@ export default function Sidebar({
           <Link
             to="/live"
             className="flex items-center space-x-3 px-3 py-2 hover:bg-[#1a1f2e] rounded-lg mb-1 cursor-pointer transition-colors"
+            onClick={onClose}
           >
             <FiTv className="text-gray-400" size={18} />
             <span className="text-gray-400 hover:text-white text-sm font-medium flex items-center">
@@ -188,6 +205,7 @@ export default function Sidebar({
                 key={item.name}
                 to={item.path}
                 className="flex items-center space-x-3 px-3 py-2 text-sm text-gray-400 hover:bg-[#1a1f2e] hover:text-white rounded transition-colors"
+                onClick={onClose}
               >
                 <span className="text-[#00b3b3]">{item.icon}</span>
                 <span>{item.name}</span>
@@ -201,6 +219,7 @@ export default function Sidebar({
           <Link
             to="/responsible-gaming"
             className="text-xs text-gray-500 hover:text-[#00b3b3] transition-colors flex items-center"
+            onClick={onClose}
           >
             <FiShield className="mr-2 text-yellow-500" size={12} />
             Responsible Gambling

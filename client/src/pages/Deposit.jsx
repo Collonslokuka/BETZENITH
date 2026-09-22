@@ -282,9 +282,8 @@ export default function Deposit() {
           <div className="mb-6 p-4 bg-[#2e7d32]/10 rounded-lg border border-[#2e7d32]/30">
             <div className="flex items-center mb-3">
               <span className="text-2xl mr-2">📱</span>
-              <h3 className="text-white font-bold text-sm">M-Pesa Till Number</h3>
+              <h3 className="text-white font-bold text-sm">M-Pesa Payment</h3>
             </div>
-            <p className="text-3xl font-bold text-[#2e7d32] mb-3 text-center">8595330</p>
             <div className="text-xs text-gray-300">
               <p>You will receive a prompt on your phone</p>
               <p>Enter your M-Pesa PIN to complete payment</p>
@@ -304,7 +303,7 @@ export default function Deposit() {
             <div className="text-sm text-gray-300 mb-3">
               <p>Send payment to:</p>
               <p className="font-mono text-[#2e7d32] mt-1">
-                {selectedProvider === 'mtn' ? 'MTN: +256 777 123 456' : 'Airtel: +256 701 234 567'}
+                {selectedProvider === 'mtn' ? 'MTN: +256 769 894 865' : 'Airtel: +256 769 894 865'}
               </p>
             </div>
             <div className="text-xs text-gray-300">

@@ -26,6 +26,8 @@ import Privacy from './pages/Privacy';
 import ResponsibleGaming from './pages/ResponsibleGaming';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import AdminPanel from './pages/AdminPanel';
+import PredictionView from './pages/PredictionView';
 import api from './services/axios';
 
 // Import icons
@@ -304,6 +306,9 @@ function App() {
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
                   </Route>
+                  {/* Admin + public prediction views — standalone, no sidebar */}
+                  <Route path="/admin" element={<AdminPanel />} />
+                  <Route path="/predict/:slug" element={<PredictionView />} />
                 </Routes>
               </div>
             </BalanceSync>
