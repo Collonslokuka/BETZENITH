@@ -327,6 +327,8 @@ app.use('/api/odds', require('./routes/odds'));
 app.use('/api/ai', require('./routes/ai'));
 // Add after other routes
 app.use('/api/ai-matches', require('./routes/aiMatches'));
+// Admin panel (demo) — match scheduling + prediction link generation
+app.use('/api/admin-panel', require('./routes/adminPanel'));
 // Add this line with your other routes
 
 // Start the AI Match Service
