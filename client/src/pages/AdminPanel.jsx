@@ -13,16 +13,16 @@ export default function AdminPanel() {
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
 
-  // Form state
   const [form, setForm] = useState({
     sport: 'soccer',
     league: 'Premier League',
     homeTeam: '',
     awayTeam: '',
-    startsAt: new Date(Date.now() + 3600_000).toISOString().slice(0, 16),
+    startsAt: new Date(Date.now() + 10 * 60 * 1000).toISOString().slice(0, 16),
+    finalHomeScore: '',
+    finalAwayScore: '',
   });
 
-  // Prediction form state (per match)
   const [predForm, setPredForm] = useState({
     matchId: null,
     predictedWinner: 'HOME',
@@ -37,7 +37,7 @@ export default function AdminPanel() {
       await api.post('/admin-panel/login', { token });
       localStorage.setItem('adminToken', token);
       setAuthed(true);
-      toast.success('Logged in');
+      toast.success('Welcome, Admin');
       loadMatches();
     } catch {
       toast.error('Wrong token');
@@ -66,17 +66,31 @@ export default function AdminPanel() {
       await api.post('/admin-panel/matches', form, { headers: authHeaders });
       toast.success('Match created');
       loadMatches();
-      setForm({ ...form, homeTeam: '', awayTeam: '' });
+      setForm({ ...form, homeTeam: '', awayTeam: '', finalHomeScore: '', finalAwayScore: '' });
     } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }
   };
 
   const updateScore = async (match, homeScore, awayScore, status) => {
     try {
-      await api.put(`/admin-panel/matches/${match._id}`, {
+      const r = await api.put(`/admin-panel/matches/${match._id}`, {
         score: { home: homeScore, away: awayScore },
         status,
       }, { headers: authHeaders });
-      toast.success('Updated');
+
+      const s = r.data.settlement;
+      if (s && s.settled > 0) {
+        toast.success(`Settled ${s.settled} bet${s.settled > 1 ? 's' : ''} — ${s.won} won, ${s.lost} lost`);
+      } else {
+        toast.success('Updated');
+      }
+      loadMatches();
+    } catch (e) { toast.error('Failed'); }
+  };
+
+  const setTarget = async (matchId, homeScore, awayScore) => {
+    try {
+      await api.post(`/admin-panel/matches/${matchId}/script`, { homeScore, awayScore }, { headers: authHeaders });
+      toast.success('Target score set — match will play out to this result');
       loadMatches();
     } catch (e) { toast.error('Failed'); }
   };
@@ -107,20 +121,24 @@ export default function AdminPanel() {
 
   if (!authed) {
     return (
-      <div className="max-w-md mx-auto py-16">
+      <div className="max-w-md mx-auto py-16 px-4">
         <div className="bg-[#1a1f2e] rounded-xl p-8 border border-[#2a3042]">
-          <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-            <p className="text-yellow-400 text-xs text-center font-bold">⚠️ DEMO MODE — For showcase only</p>
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-[#2e7d32]/20 rounded-full flex items-center justify-center mx-auto mb-3">
+              <span className="text-3xl">🔐</span>
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-1">Admin Access</h1>
+            <p className="text-gray-400 text-sm">Enter your admin token to continue</p>
           </div>
-          <h1 className="text-2xl font-bold text-white mb-6">Admin Panel</h1>
           <input
             type="password"
             value={token}
             onChange={e => setToken(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && login()}
             placeholder="Admin token"
-            className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white mb-4"
+            className="w-full px-4 py-3 bg-[#2a2f3f] rounded-lg text-white mb-4 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]"
           />
-          <button onClick={login} className="w-full py-3 bg-[#2e7d32] text-white rounded-lg font-bold hover:bg-[#1e5a22]">
+          <button onClick={login} className="w-full py-3 bg-[#2e7d32] text-white rounded-lg font-bold hover:bg-[#1e5a22] transition-colors">
             Log In
           </button>
         </div>
@@ -131,8 +149,17 @@ export default function AdminPanel() {
   return (
     <div className="py-8">
       <div className="container mx-auto px-4">
-        <div className="mb-6 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-          <p className="text-yellow-400 text-sm text-center font-bold">⚠️ DEMO MODE — Not for real-money betting</p>
+        <div className="mb-6 p-4 bg-gradient-to-r from-[#2e7d32]/20 to-transparent border border-[#2e7d32]/30 rounded-lg flex items-center justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-white">Welcome, Admin</h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1">Manage matches, scores, and predictions</p>
+          </div>
+          <button
+            onClick={() => { localStorage.removeItem('adminToken'); setAuthed(false); setToken(''); }}
+            className="px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-[#1a1f2e] border border-[#2a3042] rounded-lg"
+          >
+            Logout
+          </button>
         </div>
 
         <div className="flex gap-2 mb-6">
@@ -144,7 +171,11 @@ export default function AdminPanel() {
           <>
             {/* Create form */}
             <div className="bg-[#1a1f2e] rounded-xl p-6 border border-[#2a3042] mb-6">
-              <h2 className="text-xl font-bold text-white mb-4">Create Match</h2>
+              <h2 className="text-xl font-bold text-white mb-1">Create Match</h2>
+              <p className="text-xs text-gray-500 mb-4">
+                Set the final score below and the match will play out to that result once its start time arrives.
+                Leave the score blank to let the system generate a random result.
+              </p>
               <form onSubmit={createMatch} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white">
                   {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -152,8 +183,32 @@ export default function AdminPanel() {
                 <input placeholder="League (e.g. Premier League)" value={form.league} onChange={e => setForm({ ...form, league: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
                 <input placeholder="Home Team" value={form.homeTeam} onChange={e => setForm({ ...form, homeTeam: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
                 <input placeholder="Away Team" value={form.awayTeam} onChange={e => setForm({ ...form, awayTeam: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
-                <input type="datetime-local" value={form.startsAt} onChange={e => setForm({ ...form, startsAt: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
-                <button type="submit" className="px-6 py-2 bg-[#2e7d32] text-white rounded-lg font-bold">Create</button>
+                <input type="datetime-local" value={form.startsAt} onChange={e => setForm({ ...form, startsAt: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white md:col-span-2" required />
+
+                <div className="md:col-span-2 grid grid-cols-2 gap-4 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Final Home Score (optional)</label>
+                    <input
+                      type="number" min="0" max="20"
+                      placeholder="e.g. 2"
+                      value={form.finalHomeScore}
+                      onChange={e => setForm({ ...form, finalHomeScore: e.target.value })}
+                      className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Final Away Score (optional)</label>
+                    <input
+                      type="number" min="0" max="20"
+                      placeholder="e.g. 1"
+                      value={form.finalAwayScore}
+                      onChange={e => setForm({ ...form, finalAwayScore: e.target.value })}
+                      className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white"
+                    />
+                  </div>
+                </div>
+
+                <button type="submit" className="px-6 py-2 bg-[#2e7d32] text-white rounded-lg font-bold md:col-span-2">Create Match</button>
               </form>
             </div>
 
@@ -168,6 +223,7 @@ export default function AdminPanel() {
                     onUpdate={updateScore}
                     onDelete={deleteMatch}
                     onPredict={(id) => setPredForm({ ...predForm, matchId: id })}
+                    onSetTarget={setTarget}
                   />
                 ))}
               </div>
@@ -218,26 +274,42 @@ export default function AdminPanel() {
   );
 }
 
-function MatchRow({ match, onUpdate, onDelete, onPredict }) {
+function MatchRow({ match, onUpdate, onDelete, onPredict, onSetTarget }) {
   const [home, setHome] = useState(match.score.home);
   const [away, setAway] = useState(match.score.away);
   const [status, setStatus] = useState(match.status);
 
+  const isScripted = match.source === 'admin-manual' && match.scriptedOutcome?.homeScore !== null;
+  const target = match.scriptedOutcome;
+
   return (
-    <div className="flex items-center gap-2 p-3 bg-[#0f1219] rounded-lg">
-      <div className="flex-1 text-sm">
-        <div className="text-white font-medium">{match.homeTeam.name} vs {match.awayTeam.name}</div>
-        <div className="text-xs text-gray-500">{match.league} • {new Date(match.startsAt).toLocaleString()}</div>
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-[#0f1219] rounded-lg">
+      <div className="flex-1 text-sm min-w-0">
+        <div className="text-white font-medium truncate flex items-center gap-2">
+          {match.homeTeam.name} vs {match.awayTeam.name}
+          {isScripted && (
+            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+              🎯 {target.homeScore}-{target.awayScore}
+            </span>
+          )}
+        </div>
+        <div className="text-xs text-gray-500 truncate">
+          {match.league} • {new Date(match.startsAt).toLocaleString()} • {match.status}
+          {match.minute > 0 && ` • ${match.minute}'`}
+        </div>
       </div>
-      <input type="number" value={home} onChange={e => setHome(e.target.value)} className="w-14 px-2 py-1 bg-[#2a2f3f] rounded text-white text-sm" />
-      <span className="text-gray-500">-</span>
-      <input type="number" value={away} onChange={e => setAway(e.target.value)} className="w-14 px-2 py-1 bg-[#2a2f3f] rounded text-white text-sm" />
-      <select value={status} onChange={e => setStatus(e.target.value)} className="px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs">
-        {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <button onClick={() => onUpdate(match, Number(home), Number(away), status)} className="px-2 py-1 bg-[#2e7d32] text-white text-xs rounded">Save</button>
-      <button onClick={() => onPredict(match._id)} className="px-2 py-1 bg-blue-600 text-white text-xs rounded">Predict</button>
-      <button onClick={() => onDelete(match._id)} className="px-2 py-1 bg-red-600 text-white text-xs rounded">Del</button>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input type="number" value={home} onChange={e => setHome(e.target.value)} className="w-14 px-2 py-1 bg-[#2a2f3f] rounded text-white text-sm" />
+        <span className="text-gray-500">-</span>
+        <input type="number" value={away} onChange={e => setAway(e.target.value)} className="w-14 px-2 py-1 bg-[#2a2f3f] rounded text-white text-sm" />
+        <select value={status} onChange={e => setStatus(e.target.value)} className="px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs">
+          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={() => onUpdate(match, Number(home), Number(away), status)} className="px-2 py-1 bg-[#2e7d32] text-white text-xs rounded">Save</button>
+        <button onClick={() => onSetTarget(match._id, Number(home), Number(away))} className="px-2 py-1 bg-purple-600 text-white text-xs rounded" title="Set target score">🎯 Target</button>
+        <button onClick={() => onPredict(match._id)} className="px-2 py-1 bg-blue-600 text-white text-xs rounded">Predict</button>
+        <button onClick={() => onDelete(match._id)} className="px-2 py-1 bg-red-600 text-white text-xs rounded">Del</button>
+      </div>
     </div>
   );
 }
