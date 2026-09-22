@@ -232,6 +232,10 @@ const matchSchema = new mongoose.Schema(
     // Metadata
     externalId: String,
     source: String,
+    scriptedOutcome: {
+      homeScore: { type: Number, default: null },
+      awayScore: { type: Number, default: null },
+    },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },

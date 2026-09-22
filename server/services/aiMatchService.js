@@ -179,6 +179,48 @@ class AIMatchService {
       else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
       else match.status = 'SECOND_HALF';
 
+      // ── SCRIPTED OUTCOME (admin-created matches) ──
+      if (match.source === 'admin-manual' && match.scriptedOutcome?.homeScore !== null && match.scriptedOutcome?.homeScore !== undefined) {
+        const targetHome = match.scriptedOutcome.homeScore || 0;
+        const targetAway = match.scriptedOutcome.awayScore || 0;
+
+        // Deterministic goal schedule so the match plays out realistically
+        const schedule = goalScheduleForMatch(match._id, targetHome, targetAway);
+
+        // Apply only goals whose minute has passed
+        let h = 0, a = 0;
+        for (const g of schedule) {
+          if (g.minute <= newMinute) {
+            if (g.team === 'home') h++;
+            else a++;
+          }
+        }
+
+        // Log any new goals that just happened
+        if (h !== (match.score.home || 0)) {
+          match.events = match.events || [];
+          match.events.push({
+            type: 'GOAL', minute: newMinute, team: 'home',
+            homeScore: h, awayScore: a,
+            at: new Date(),
+          });
+        }
+        if (a !== (match.score.away || 0)) {
+          match.events = match.events || [];
+          match.events.push({
+            type: 'GOAL', minute: newMinute, team: 'away',
+            homeScore: h, awayScore: a,
+            at: new Date(),
+          });
+        }
+
+        match.score = { home: h, away: a };
+        match.lastUpdated = new Date();
+        await match.save();
+        continue; // skip random goal simulation for this match
+      }
+      // ── END SCRIPTED OUTCOME ──
+
       const isBasketball = sport === 'basketball';
       const isTennis = sport === 'tennis';
       const isMMA = sport === 'mma';
@@ -236,6 +278,18 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
 
       if ((match.minute || 0) >= dur.regular) {
+        // Force scripted score if admin-created match had a target
+        if (
+          match.source === 'admin-manual' &&
+          match.scriptedOutcome?.homeScore !== null &&
+          match.scriptedOutcome?.homeScore !== undefined
+        ) {
+          match.score = {
+            home: match.scriptedOutcome.homeScore || 0,
+            away: match.scriptedOutcome.awayScore || 0,
+          };
+        }
+
         match.status = 'FINISHED';
         match.finishedAt = new Date();
         match.result = {
@@ -594,6 +648,23 @@ function buildMarkets(sport) {
         { name: '2', odds: +(1.5 + Math.random() * 2.0).toFixed(2), isActive: true },
       ];
   }
+}
+
+function goalScheduleForMatch(matchId, targetHome, targetAway) {
+  // Deterministic pseudo-random goal minutes derived from the match ID
+  const seed = String(matchId).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const goals = [];
+  let counter = 0;
+
+  for (let i = 0; i < targetHome; i++) goals.push({ team: 'home', key: seed + (++counter) * 17 });
+  for (let i = 0; i < targetAway; i++) goals.push({ team: 'away', key: seed + (++counter) * 23 });
+
+  for (const g of goals) {
+    const r = (g.key * 9301 + 49297) % 233280;
+    g.minute = 5 + Math.floor((r / 233280) * 80);
+  }
+  goals.sort((a, b) => a.minute - b.minute);
+  return goals;
 }
 
 module.exports = new AIMatchService();

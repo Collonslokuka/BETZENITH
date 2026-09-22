@@ -4,10 +4,8 @@ const crypto = require('crypto');
 const Match = require('../models/Match');
 const router = express.Router();
 
-// Simple admin token (set ADMIN_PANEL_TOKEN on Render)
 const ADMIN_TOKEN = process.env.ADMIN_PANEL_TOKEN || 'demo-admin-4656460';
 
-// In-memory slug → match mapping (survives restart if you store it in DB instead)
 const predictionSlugs = new Map();
 
 function requireAdmin(req, res, next) {
@@ -30,7 +28,7 @@ router.post('/login', (req, res) => {
 });
 
 // ============================================================
-//  LIST ALL MATCHES (recent first)
+//  LIST ALL MATCHES
 // ============================================================
 router.get('/matches', requireAdmin, async (req, res) => {
   try {
@@ -50,7 +48,7 @@ router.get('/matches', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
-//  CREATE MATCH
+//  CREATE MATCH (with optional scripted final score)
 // ============================================================
 router.post('/matches', requireAdmin, async (req, res) => {
   try {
@@ -60,7 +58,8 @@ router.post('/matches', requireAdmin, async (req, res) => {
       homeTeam,
       awayTeam,
       startsAt,
-      marketType = '1x2',
+      finalHomeScore,
+      finalAwayScore,
     } = req.body;
 
     if (!league || !homeTeam || !awayTeam || !startsAt) {
@@ -75,7 +74,6 @@ router.post('/matches', requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid startsAt' });
     }
 
-    // Default markets per sport
     const marketSets = {
       soccer: [
         { name: '1', odds: 2.10, isActive: true },
@@ -97,6 +95,11 @@ router.post('/matches', requireAdmin, async (req, res) => {
       ],
     };
 
+    // Scripted outcome is set if BOTH target scores are provided
+    const hasScript =
+      finalHomeScore !== undefined && finalHomeScore !== '' &&
+      finalAwayScore !== undefined && finalAwayScore !== '';
+
     const match = await Match.create({
       sport,
       league,
@@ -111,6 +114,9 @@ router.post('/matches', requireAdmin, async (req, res) => {
       markets: marketSets[sport] || marketSets.default,
       events: [],
       source: 'admin-manual',
+      scriptedOutcome: hasScript
+        ? { homeScore: Number(finalHomeScore), awayScore: Number(finalAwayScore) }
+        : { homeScore: null, awayScore: null },
     });
 
     res.json({ success: true, data: match });
@@ -120,17 +126,19 @@ router.post('/matches', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
-//  UPDATE MATCH (score, status, time)
+//  UPDATE MATCH
 // ============================================================
 router.put('/matches/:id', requireAdmin, async (req, res) => {
   try {
     const match = await Match.findById(req.params.id);
     if (!match) return res.status(404).json({ success: false, message: 'Not found' });
 
-    const { status, score, minute, startsAt, homeTeam, awayTeam, league, sport } = req.body;
+    const {
+      status, score, minute, startsAt, homeTeam, awayTeam, league, sport,
+      finalHomeScore, finalAwayScore,
+    } = req.body;
 
     if (status) match.status = status;
-    if (score) match.score = { home: Number(score.home) || 0, away: Number(score.away) || 0 };
     if (minute !== undefined) match.minute = Number(minute);
     if (startsAt) {
       const d = new Date(startsAt);
@@ -140,6 +148,29 @@ router.put('/matches/:id', requireAdmin, async (req, res) => {
     if (awayTeam) match.awayTeam.name = awayTeam;
     if (league) match.league = league;
     if (sport) match.sport = sport;
+
+    // Case 1: explicit final score given -> set target
+    if (finalHomeScore !== undefined && finalHomeScore !== '' &&
+        finalAwayScore !== undefined && finalAwayScore !== '') {
+      match.scriptedOutcome = {
+        homeScore: Number(finalHomeScore),
+        awayScore: Number(finalAwayScore),
+      };
+    }
+
+    // Case 2: score posted while match is SCHEDULED or LIVE -> treat as target
+    if (score && status !== 'FINISHED' &&
+        ['SCHEDULED', 'LIVE', 'FIRST_HALF', 'HALFTIME', 'SECOND_HALF'].includes(match.status)) {
+      match.scriptedOutcome = {
+        homeScore: Number(score.home) || 0,
+        awayScore: Number(score.away) || 0,
+      };
+    }
+
+    // Case 3: score posted WITH status FINISHED -> finish immediately
+    if (score && status === 'FINISHED') {
+      match.score = { home: Number(score.home) || 0, away: Number(score.away) || 0 };
+    }
 
     if (status === 'FINISHED') {
       match.finishedAt = new Date();
@@ -155,6 +186,41 @@ router.put('/matches/:id', requireAdmin, async (req, res) => {
     }
 
     await match.save();
+
+    // Settle bets if finished
+    let settlement = null;
+    if (status === 'FINISHED') {
+      try {
+        const { settleBetsForMatch } = require('../services/betSettlementService');
+        const io = req.app.get('io');
+        settlement = await settleBetsForMatch(match._id, match, io);
+        console.log(`💰 Settlement: ${JSON.stringify(settlement)}`);
+      } catch (err) {
+        console.error('❌ Settlement error:', err.message);
+      }
+    }
+
+    res.json({ success: true, data: match, settlement });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============================================================
+//  SET SCRIPTED OUTCOME (dedicated endpoint)
+// ============================================================
+router.post('/matches/:id/script', requireAdmin, async (req, res) => {
+  try {
+    const { homeScore, awayScore } = req.body;
+    const match = await Match.findById(req.params.id);
+    if (!match) return res.status(404).json({ success: false, message: 'Not found' });
+
+    match.scriptedOutcome = {
+      homeScore: Number(homeScore) || 0,
+      awayScore: Number(awayScore) || 0,
+    };
+    await match.save();
+
     res.json({ success: true, data: match });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -175,7 +241,7 @@ router.delete('/matches/:id', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
-//  GENERATE PUBLIC PREDICTION LINK
+//  PREDICTION LINKS
 // ============================================================
 router.post('/matches/:id/predict', requireAdmin, async (req, res) => {
   try {
@@ -199,9 +265,6 @@ router.post('/matches/:id/predict', requireAdmin, async (req, res) => {
   }
 });
 
-// ============================================================
-//  PUBLIC PREDICTION VIEW (no auth)
-// ============================================================
 router.get('/predict/:slug', async (req, res) => {
   try {
     const p = predictionSlugs.get(req.params.slug);
@@ -238,9 +301,6 @@ router.get('/predict/:slug', async (req, res) => {
   }
 });
 
-// ============================================================
-//  LIST ALL PREDICTIONS (admin)
-// ============================================================
 router.get('/predictions', requireAdmin, (req, res) => {
   const list = Array.from(predictionSlugs.entries()).map(([slug, p]) => ({ slug, ...p }));
   res.json({ success: true, count: list.length, data: list });
