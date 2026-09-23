@@ -33,7 +33,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", process.env.CLIENT_URL || 'http://localhost:5173', 'https://*.vercel.app', 'https://*.onrender.com'],
+      connectSrc: ["'self'", process.env.CLIENT_URL || 'http://localhost:5173', 'https://*.vercel.app', 'https://*.onrender.com', 'https://betzenith.app', 'https://*.betzenith.app'],
       imgSrc: ["'self'", "data:", "https:"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"]
@@ -59,9 +59,11 @@ const allowedOrigins = [
   'https://betzenith-odux.vercel.app',
   'https://betzenith-git-main-mrmangoyes-projects.vercel.app',
 
-  // Your custom domain (if you buy one later)
+  // Your custom domains
   'https://betznith.com',
   'https://www.betznith.com',
+  'https://betzenith.app',
+  'https://www.betzenith.app',
 
   // Render backend (for testing)
   'https://betfusion-api.onrender.com',
@@ -94,6 +96,12 @@ app.use(cors({
       return callback(null, true);
     }
 
+    // Special: Allow any subdomain of betzenith.app dynamically
+    if (origin.endsWith('.betzenith.app') || origin === 'https://betzenith.app') {
+      console.log('✅ CORS allowed (betzenith.app domain):', origin);
+      return callback(null, true);
+    }
+
     // Block other origins
     console.log('❌ CORS blocked for origin:', origin);
     return callback(new Error('CORS policy does not allow this origin'), false);
@@ -107,8 +115,14 @@ app.use(cors({
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // Allow any vercel.app or onrender.com origin
-  if (origin && (origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com') || allowedOrigins.includes(origin))) {
+  // Allow any vercel.app, onrender.com, or betzenith.app origin
+  if (origin && (
+    origin.endsWith('.vercel.app') ||
+    origin.endsWith('.onrender.com') ||
+    origin.endsWith('.betzenith.app') ||
+    origin === 'https://betzenith.app' ||
+    allowedOrigins.includes(origin)
+  )) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
