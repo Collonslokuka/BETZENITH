@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import BetSlip from '../components/BetSlip';
-import { FiEye, FiEyeOff, FiKey, FiSun, FiMoon } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiKey } from 'react-icons/fi';
 import { generatePassword } from '../utils/passwordGenerator';
 import toast from 'react-hot-toast';
 
@@ -11,10 +11,22 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme !== 'light';
-  });
+
+  // Read theme from the <html> class so it stays in sync with the header toggle
+  const [isDarkMode, setIsDarkMode] = useState(() =>
+    document.documentElement.classList.contains('dark')
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -32,19 +44,6 @@ export default function Auth() {
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
-
-  // Toggle theme
-  const toggleTheme = () => {
-    if (isDarkMode) {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-      setIsDarkMode(false);
-    } else {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-      setIsDarkMode(true);
-    }
-  };
 
   // Validate username
   const validateUsername = (username) => {
@@ -99,12 +98,12 @@ export default function Auth() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    
+
     if (!validateEmail(loginEmail)) {
       toast.error('Please enter a valid email address');
       return;
     }
-    
+
     setLoading(true);
     try {
       await login(loginEmail, loginPassword);
@@ -119,37 +118,37 @@ export default function Auth() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    
+
     // Validate username
     if (!validateUsername(username)) {
       toast.error('Username must be 3-20 characters and can only contain letters, numbers, and underscores');
       return;
     }
-    
+
     // Validate email
     if (!validateEmail(email)) {
       toast.error('Please enter a valid email address');
       return;
     }
-    
+
     // Validate password strength
     if (passwordStrength < 40) {
       toast.error('Please use a stronger password');
       return;
     }
-    
+
     // Validate passwords match
     if (password !== confirmPassword) {
       toast.error('Passwords do not match');
       return;
     }
-    
+
     // Validate terms acceptance
     if (!acceptTerms) {
       toast.error('Please accept the Terms and Conditions');
       return;
     }
-    
+
     setLoading(true);
     try {
       await register(username, email, password);
@@ -167,37 +166,24 @@ export default function Auth() {
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-[#0a0c14]' : 'bg-gray-100'} py-8 transition-colors duration-300`}>
       <div className="container mx-auto px-4">
-        {/* Theme Toggle Button */}
-        <button
-          onClick={toggleTheme}
-          className="fixed top-24 right-4 z-50 p-3 rounded-lg bg-[#1a1f2e] border border-[#2a3042] hover:border-[#2e7d32] transition-colors"
-          aria-label="Toggle theme"
-        >
-          {isDarkMode ? (
-            <FiSun className="text-yellow-400" size={20} />
-          ) : (
-            <FiMoon className="text-gray-400" size={20} />
-          )}
-        </button>
-        
         <div className="flex gap-6">
           {/* Login/Sign Up Form - Left Side */}
           <div className="flex-1">
             <div className="max-w-md mx-auto">
               {/* Header with Logo */}
               <div className="mb-6 text-center">
-                <h1 className="text-2xl font-bold text-white mb-1">
+                <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'} mb-1`}>
                   BET<span className="text-[#2e7d32]">ZENITH</span>
                 </h1>
                 <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} text-sm`}>
                   Your Premier Sports Betting Platform
                 </p>
               </div>
-              
+
               <h2 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'} mb-3 text-center`}>
                 Account Access
               </h2>
-              
+
               {/* Login/Sign Up Toggle Buttons */}
               <div className="flex space-x-3 mb-6 justify-center">
                 <button
@@ -221,7 +207,7 @@ export default function Auth() {
                   SIGN UP
                 </button>
               </div>
-              
+
               {/* Form Container */}
               <div className={`${isDarkMode ? 'bg-[#0f1219]' : 'bg-white'} rounded-xl border-2 border-[#2a3042] p-5 max-h-[60vh] overflow-y-auto scrollbar-hide`}>
                 {isLogin ? (
@@ -230,7 +216,7 @@ export default function Auth() {
                     <h3 className={`text-base font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'} mb-3`}>
                       Login to Your Account
                     </h3>
-                    
+
                     <form onSubmit={handleLogin} className="space-y-3">
                       <div>
                         <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-1 text-xs`}>
@@ -245,7 +231,7 @@ export default function Auth() {
                           required
                         />
                       </div>
-                      
+
                       <div>
                         <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-1 text-xs`}>
                           Password
@@ -268,7 +254,7 @@ export default function Auth() {
                           </button>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center justify-between mt-2">
                         <label className="flex items-center space-x-2">
                           <input type="checkbox" className="rounded border-gray-600" />
@@ -283,7 +269,7 @@ export default function Auth() {
                           Forgot password?
                         </Link>
                       </div>
-                      
+
                       <button
                         type="submit"
                         disabled={loading}
@@ -299,7 +285,7 @@ export default function Auth() {
                     <h3 className={`text-base font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'} mb-3`}>
                       Create Your Account
                     </h3>
-                    
+
                     <form onSubmit={handleRegister} className="space-y-3">
                       <div>
                         <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-1 text-xs`}>
@@ -323,7 +309,7 @@ export default function Auth() {
                           </p>
                         )}
                       </div>
-                      
+
                       <div>
                         <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-1 text-xs`}>
                           Email
@@ -337,7 +323,7 @@ export default function Auth() {
                           required
                         />
                       </div>
-                      
+
                       <div>
                         <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-1 text-xs`}>
                           Phone Number (Optional)
@@ -350,7 +336,7 @@ export default function Auth() {
                           placeholder="+254 XXX XXX XXX"
                         />
                       </div>
-                      
+
                       <div>
                         <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-1 text-xs`}>
                           Country
@@ -366,7 +352,7 @@ export default function Auth() {
                           <option value="Malawi">Malawi 🇲🇼</option>
                         </select>
                       </div>
-                      
+
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} text-xs`}>
@@ -399,7 +385,7 @@ export default function Auth() {
                             {showPassword ? <FiEyeOff size={16} /> : <FiEye size={16} />}
                           </button>
                         </div>
-                        
+
                         {/* Password Strength Meter */}
                         {password && (
                           <div className="mt-2">
@@ -423,7 +409,7 @@ export default function Auth() {
                           </div>
                         )}
                       </div>
-                      
+
                       <div>
                         <label className={`block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-1 text-xs`}>
                           Confirm Password
@@ -449,7 +435,7 @@ export default function Auth() {
                           <p className="text-red-500 text-xs mt-1">Passwords do not match</p>
                         )}
                       </div>
-                      
+
                       <div className="flex items-center space-x-2 mt-2">
                         <input
                           type="checkbox"
@@ -469,7 +455,7 @@ export default function Auth() {
                           </button>
                         </label>
                       </div>
-                      
+
                       <button
                         type="submit"
                         disabled={loading}
@@ -481,7 +467,7 @@ export default function Auth() {
                   </>
                 )}
               </div>
-              
+
               {/* Registration Success Message */}
               {!isLogin && (
                 <div className={`mt-4 p-3 ${isDarkMode ? 'bg-[#2e7d32]/20' : 'bg-green-50'} rounded-lg border border-[#2e7d32]/30 text-center`}>
@@ -492,7 +478,7 @@ export default function Auth() {
               )}
             </div>
           </div>
-          
+
           {/* Bet Slip - Right Side */}
           <div className="w-80 hidden lg:block">
             <div className="sticky top-24">
