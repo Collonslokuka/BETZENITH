@@ -5,334 +5,134 @@
 
 @layer base {
   :root {
-    --color-primary: #9ACD32; /* Yellow-Green */
-    --color-primary-dark: #8BB82D;
-    --color-black: #000000;
-    --color-dark-bg: #0a0c14;
-    --color-card-bg: #1a1f2e;
-    --color-border: #2a3042;
-  }
-
-  .dark {
-    --color-bg: #0a0c14;
-    --color-card: #1a1f2e;
-    --color-text: #ffffff;
-    --color-text-secondary: #9ca3af;
-  }
-
-  .light {
-    --color-bg: #f3f4f6;
-    --color-card: #ffffff;
-    --color-text: #111827;
-    --color-text-secondary: #6b7280;
+    --color-primary: #2e7d32;
+    --color-primary-dark: #1e5a22;
   }
 
   body {
-    @apply bg-black text-gray-200;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     overscroll-behavior: none;
+    background-color: #0a0c14;
+    color: #e5e7eb;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* Luxury scrollbar */
-  ::-webkit-scrollbar {
-    @apply w-2 h-2;
+  /* Light mode overrides for body */
+  :root:not(.dark) body {
+    background-color: #f3f4f6;
+    color: #111827;
   }
 
-  ::-webkit-scrollbar-track {
-    @apply bg-[#1a1f2e];
-  }
+  /* Scrollbar — dark */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #1a1f2e; }
+  ::-webkit-scrollbar-thumb { background: #2a3042; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #353b4d; }
 
-  ::-webkit-scrollbar-thumb {
-    @apply bg-[#2a3042] rounded-full hover:bg-[#353b4d];
-  }
+  /* Scrollbar — light */
+  :root:not(.dark) ::-webkit-scrollbar-track { background: #e5e7eb; }
+  :root:not(.dark) ::-webkit-scrollbar-thumb { background: #9ca3af; }
 }
 
+/* ============================================================
+   LIGHT MODE OVERRIDES
+   These rules override Tailwind's dark utility classes when the
+   html element is NOT .dark. Nothing in JSX needs to change.
+   ============================================================ */
+
+/* Page backgrounds */
+:root:not(.dark) .bg-black,
+:root:not(.dark) .bg-\[\#0a0c14\] { background-color: #f3f4f6 !important; }
+
+/* Sidebar / header */
+:root:not(.dark) .bg-\[\#0f1219\] { background-color: #ffffff !important; }
+
+/* Cards */
+:root:not(.dark) .bg-\[\#1a1f2e\] { background-color: #ffffff !important; }
+:root:not(.dark) .bg-\[\#0f1117\] { background-color: #f9fafb !important; }
+
+/* Inputs */
+:root:not(.dark) .bg-\[\#2a2f3f\] { background-color: #f3f4f6 !important; }
+
+/* Hover backgrounds */
+:root:not(.dark) .bg-\[\#2a3042\] { background-color: #e5e7eb !important; }
+:root:not(.dark) .bg-\[\#353b4d\] { background-color: #d1d5db !important; }
+
+/* Dropdown / modal backgrounds */
+:root:not(.dark) .bg-\[\#1a1f2e\]\/50 { background-color: rgba(255,255,255,0.5) !important; }
+
+/* Text colors */
+:root:not(.dark) .text-white { color: #111827 !important; }
+:root:not(.dark) .text-gray-200 { color: #1f2937 !important; }
+:root:not(.dark) .text-gray-300 { color: #374151 !important; }
+:root:not(.dark) .text-gray-400 { color: #6b7280 !important; }
+:root:not(.dark) .text-gray-500 { color: #6b7280 !important; }
+:root:not(.dark) .text-gray-600 { color: #9ca3af !important; }
+
+/* Borders */
+:root:not(.dark) .border-\[\#2a3042\] { border-color: #e5e7eb !important; }
+:root:not(.dark) .border-\[\#2a2f3f\] { border-color: #e5e7eb !important; }
+:root:not(.dark) .border-gray-800 { border-color: #e5e7eb !important; }
+
+/* Keep brand green the same in both themes */
+:root:not(.dark) .text-\[\#2e7d32\] { color: #2e7d32 !important; }
+:root:not(.dark) .text-\[\#00b3b3\] { color: #008080 !important; }
+:root:not(.dark) .bg-\[\#2e7d32\] { background-color: #2e7d32 !important; }
+
+/* Preserve red for live indicators in both themes */
+:root:not(.dark) .bg-red-500 { background-color: #ef4444 !important; }
+:root:not(.dark) .text-red-500 { color: #ef4444 !important; }
+:root:not(.dark) .text-red-400 { color: #dc2626 !important; }
+
+/* Preserve green for wins */
+:root:not(.dark) .text-green-400 { color: #16a34a !important; }
+:root:not(.dark) .text-green-500 { color: #16a34a !important; }
+
+/* Preserve yellow for warnings */
+:root:not(.dark) .text-yellow-400 { color: #ca8a04 !important; }
+:root:not(.dark) .text-yellow-500 { color: #ca8a04 !important; }
+
+/* Cards and containers that have subtle gradients */
+:root:not(.dark) .from-\[\#2e7d32\] { --tw-gradient-from: #16a34a !important; }
+:root:not(.dark) .to-\[\#1e5a22\] { --tw-gradient-to: #15803d !important; }
+
+/* Bet slip panels */
+:root:not(.dark) .bg-\[\#1a1f2e\] { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+/* @layer components — keep these, they use @apply and stay theme-aware */
 @layer components {
-  /* Responsive Container */
-  .container-responsive {
-    @apply w-full px-4 mx-auto;
-  }
+  .container-responsive { @apply w-full px-4 mx-auto; }
 
-  /* Responsive Text Sizes */
-  .text-responsive-xs {
-    @apply text-xs sm:text-sm;
-  }
-
-  .text-responsive-sm {
-    @apply text-sm sm:text-base;
-  }
-
-  .text-responsive-base {
-    @apply text-base sm:text-lg;
-  }
-
-  .text-responsive-lg {
-    @apply text-lg sm:text-xl md:text-2xl;
-  }
-
-  .text-responsive-xl {
-    @apply text-xl sm:text-2xl md:text-3xl;
-  }
-
-  /* Responsive Grid */
-  .grid-responsive {
-    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
-  }
-
-  /* Match Card */
   .match-card {
-    @apply bg-[#1a1f2e] rounded-lg p-3 sm:p-4 border border-[#2a3042] mb-3 sm:mb-4
-           hover:border-[#9ACD32]/30 transition-all duration-300
-           hover:shadow-lg hover:shadow-[#9ACD32]/5;
+    @apply rounded-lg p-3 sm:p-4 border mb-3 sm:mb-4 transition-all duration-300;
   }
 
-  /* League text */
-  .league-text {
-    @apply text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 sm:mb-3;
-  }
-
-  /* Team abbreviations */
-  .team-abbr {
-    @apply text-xl sm:text-2xl font-bold text-white;
-  }
-
-  /* Team names */
-  .team-name {
-    @apply text-xs sm:text-sm text-gray-400;
-  }
-
-  /* Status badge */
-  .status-badge {
-    @apply px-2 py-1 bg-gray-500/20 text-gray-400 text-xs rounded inline-block font-medium;
-  }
-
-  .status-live {
-    @apply bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse;
-  }
-
-  /* Market box */
   .market-box {
-    @apply bg-[#2a3042] p-2 sm:p-3 rounded text-center transition-all duration-200;
-  }
-
-  .market-box-active {
-    @apply cursor-pointer hover:bg-[#353b4d] active:scale-95;
-  }
-
-  .market-name {
-    @apply text-xs text-gray-400 mb-1;
-  }
-
-  .market-odds {
-    @apply text-base sm:text-lg font-bold text-[#9ACD32];
-  }
-
-  /* Bet Slip */
-  .bet-slip {
-    @apply bg-[#1a1f2e] rounded-lg p-3 sm:p-4 sticky top-20 sm:top-24 border border-[#2a3042];
-  }
-
-  /* Primary Button */
-  .btn-primary {
-    @apply px-4 sm:px-6 py-2 sm:py-3 bg-[#9ACD32] text-black rounded-lg font-bold
-           hover:bg-[#8BB82D] transition-all duration-200
-           disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base;
-  }
-
-  .btn-secondary {
-    @apply px-4 sm:px-6 py-2 sm:py-3 border border-[#9ACD32] text-[#9ACD32] rounded-lg font-bold
-           hover:bg-[#9ACD32]/10 transition-all duration-200 text-sm sm:text-base;
-  }
-
-  /* Section titles */
-  .section-title {
-    @apply text-base sm:text-lg font-bold text-white mb-3 sm:mb-4 flex items-center;
-  }
-
-  .section-title-accent {
-    @apply w-1 h-4 sm:h-6 bg-[#9ACD32] rounded-full mr-2 sm:mr-3;
-  }
-
-  /* Mobile Menu */
-  .mobile-menu {
-    @apply fixed inset-0 bg-black/95 z-50 overflow-y-auto;
-  }
-
-  /* Tablet Menu */
-  .tablet-menu {
-    @apply fixed left-0 top-0 w-48 bg-[#0f1219] border-r border-[#2a3042] h-full overflow-y-auto;
-  }
-
-  /* Desktop Menu */
-  .desktop-menu {
-    @apply fixed left-0 top-0 w-64 bg-[#0f1219] border-r border-[#2a3042] h-full overflow-y-auto;
-  }
-
-  /* Currency Selector */
-  .currency-selector {
-    @apply relative inline-block;
-  }
-
-  .currency-dropdown {
-    @apply absolute right-0 mt-2 w-48 sm:w-56 bg-[#1a1f2e] rounded-lg shadow-xl 
-           border border-[#2a3042] overflow-hidden z-50;
-  }
-
-  /* Live Match Card */
-  .live-match-card {
-    @apply bg-gradient-to-r from-red-500/5 to-transparent border-l-4 border-red-500;
-  }
-
-  /* Payment Method Input */
-  .payment-input {
-    @apply w-full px-3 py-2 bg-[#2a2f3f] rounded text-white text-sm 
-           focus:outline-none focus:ring-1 focus:ring-[#9ACD32] border border-[#2a3042];
+    @apply p-2 sm:p-3 rounded text-center transition-all duration-200;
   }
 }
 
-/* Responsive Breakpoints */
-/* Mobile (default) */
+/* Mobile — main content has no sidebar offset */
 @media (max-width: 639px) {
-  .hide-on-mobile {
-    display: none;
-  }
-  
-  .show-on-mobile {
-    display: block;
-  }
-
-  .container {
-    @apply px-3;
-  }
-
-  main {
-    @apply ml-0 !important;
-  }
-
-  .bet-slip-sidebar {
-    @apply fixed bottom-0 left-0 right-0 z-50;
-  }
+  .hide-on-mobile { display: none; }
 }
 
-/* Tablet */
+/* Tablet — sidebar 192px */
 @media (min-width: 640px) and (max-width: 1023px) {
-  .hide-on-tablet {
-    display: none;
-  }
-  
-  .show-on-tablet {
-    display: block;
-  }
-
-  .container {
-    @apply px-4;
-  }
-
-  main {
-    @apply ml-48 !important;
-  }
+  .hide-on-tablet { display: none; }
 }
 
-/* Desktop */
+/* Desktop — sidebar 256px */
 @media (min-width: 1024px) {
-  .hide-on-desktop {
-    display: none;
-  }
-  
-  .show-on-desktop {
-    display: block;
-  }
-
-  .container {
-    @apply px-6;
-  }
-
-  main {
-    @apply ml-64 !important;
-  }
+  .hide-on-desktop { display: none; }
 }
 
-/* Large Desktop */
-@media (min-width: 1536px) {
-  .container {
-    @apply max-w-7xl mx-auto;
-  }
+/* Footer gradient — dark only */
+.dark .footer-sink::before,
+.dark .footer-visible main::after {
+  background: linear-gradient(to top, rgba(0,0,0,1) 0%, transparent 100%);
 }
 
-/* Footer Sink Effect */
-.footer-sink {
-  position: relative;
-  z-index: 10;
-}
-
-.footer-sink::before {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  height: 150px;
-  pointer-events: none;
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.9) 30%,
-    rgba(0, 0, 0, 0.6) 60%,
-    transparent 100%
-  );
-  z-index: 20;
-}
-
-.footer-visible main {
-  position: relative;
-}
-
-.footer-visible main::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 200px;
-  pointer-events: none;
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.8) 30%,
-    transparent 100%
-  );
-  z-index: 15;
-  animation: sinkFade 0.5s ease-out forwards;
-}
-
-@keyframes sinkFade {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
-}
-
-/* Hide scrollbar */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Dark mode adjustments */
-.dark .match-card {
-  @apply bg-[#1a1f2e] border-[#2a3042];
-}
-
-.light .match-card {
-  @apply bg-white border-gray-200 shadow-md;
-}
-
-.light .text-white {
-  @apply text-gray-900;
-}
-
-.light .text-gray-400 {
-  @apply text-gray-600;
-}
+/* Scrollbar hide utility */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }

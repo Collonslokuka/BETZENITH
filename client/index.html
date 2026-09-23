@@ -8,6 +8,16 @@
     <meta name="theme-color" content="#0f1219" />
     <meta name="description" content="BetZenith - Premium sports betting with world-class odds" />
     <title>BetZenith — Premium Sports Betting</title>
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('theme');
+          if (!saved || saved === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
