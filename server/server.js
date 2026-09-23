@@ -171,6 +171,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ============ SOCKET.IO ============
 app.set('io', io);
+global.io = io; // NEW: expose io globally for services (aiMatchService live updates)
 
 // Track online users and match subscribers
 const onlineUsers = new Map();

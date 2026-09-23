@@ -217,6 +217,19 @@ class AIMatchService {
         match.score = { home: h, away: a };
         match.lastUpdated = new Date();
         await match.save();
+
+        // NEW: push live update to subscribers
+        const io = global.io;
+        if (io) {
+          io.to(`match-${match._id}`).emit('match-update', {
+            _id: match._id,
+            score: match.score,
+            minute: match.minute,
+            status: match.status,
+            league: match.league,
+            lastUpdated: match.lastUpdated,
+          });
+        }
         continue; // skip random goal simulation for this match
       }
       // ── END SCRIPTED OUTCOME ──
@@ -265,6 +278,19 @@ class AIMatchService {
 
       match.lastUpdated = new Date();
       await match.save();
+
+      // NEW: push live update to subscribers
+      const io = global.io;
+      if (io) {
+        io.to(`match-${match._id}`).emit('match-update', {
+          _id: match._id,
+          score: match.score,
+          minute: match.minute,
+          status: match.status,
+          league: match.league,
+          lastUpdated: match.lastUpdated,
+        });
+      }
     }
   }
 
@@ -305,6 +331,19 @@ class AIMatchService {
 
         const io = global.io;
         if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
+
+        // NEW: settle bets for this match
+        try {
+          const settleMod = require('./settlement');
+          const settle = settleMod.settleMatch || settleMod.settle || settleMod.default;
+          if (typeof settle === 'function') {
+            await settle(match._id);
+          }
+        } catch (err) {
+          if (err.code !== 'MODULE_NOT_FOUND') {
+            console.error('[ai-sim] settle failed for', match._id, err.message);
+          }
+        }
       }
     }
   }
