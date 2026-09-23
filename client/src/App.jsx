@@ -28,6 +28,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import AdminPanel from './pages/AdminPanel';
 import PredictionView from './pages/PredictionView';
+import Wallet from './pages/Wallet';
 import api from './services/axios';
 
 // Import icons
@@ -295,6 +296,7 @@ function App() {
                     <Route path="/bet-slip" element={<BetSlipPage />} />
                     <Route path="/favorites" element={<Favorites />} />
                     <Route path="/my-bets" element={<MyBets />} />
+                    <Route path="/wallet" element={<Wallet />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/privacy" element={<Privacy />} />

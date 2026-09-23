@@ -34,8 +34,7 @@ export default function MyBets() {
       const data = await getMyBets();
       const betsData = Array.isArray(data) ? data : data?.data || [];
       setBets(betsData);
-      
-      // Calculate stats
+
       const totalBets = betsData.length;
       const wonBets = betsData.filter(b => b.status === 'WON').length;
       const lostBets = betsData.filter(b => b.status === 'LOST').length;
@@ -44,7 +43,7 @@ export default function MyBets() {
       const totalWinnings = betsData
         .filter(b => b.status === 'WON')
         .reduce((sum, b) => sum + (b.potentialWin || 0), 0);
-      
+
       setStats({
         totalBets,
         wonBets,
@@ -54,7 +53,6 @@ export default function MyBets() {
         totalWinnings,
         profit: totalWinnings - totalStake
       });
-      
     } catch (error) {
       console.error('Error loading bets:', error);
       toast.error('Failed to load bets');
@@ -68,21 +66,23 @@ export default function MyBets() {
     return bet.status === filter;
   });
 
+  const statusDot = (status) => {
+    switch (status) {
+      case 'WON': return 'bg-green-500';
+      case 'LOST': return 'bg-red-500';
+      case 'PENDING': return 'bg-yellow-400';
+      case 'CASHED_OUT': return 'bg-blue-500';
+      case 'VOID': return 'bg-gray-400';
+      default: return 'bg-gray-400';
+    }
+  };
+
   const getStatusIcon = (status) => {
-    switch(status) {
+    switch (status) {
       case 'WON': return <FiCheckCircle className="text-green-400" />;
       case 'LOST': return <FiXCircle className="text-red-400" />;
       case 'PENDING': return <FiClock className="text-yellow-400" />;
       default: return <FiTrendingUp className="text-gray-400" />;
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'WON': return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'LOST': return 'bg-red-500/20 text-red-400 border-red-500/30';
-      case 'PENDING': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
   };
 
@@ -107,7 +107,7 @@ export default function MyBets() {
             <p className="text-gray-400 mb-6">Please login to view your betting history</p>
             <Link
               to="/login"
-              className="inline-block px-6 py-3 bg-[#00b3b3] text-white rounded-lg font-bold hover:bg-[#009999]"
+              className="inline-block px-6 py-3 bg-[#2e7d32] text-white rounded-lg font-bold hover:bg-[#1e5a22]"
             >
               Login
             </Link>
@@ -118,169 +118,161 @@ export default function MyBets() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1117] py-8">
-      <div className="container mx-auto px-4">
-        {/* Header with Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-[#1a1f2e] rounded-lg p-4">
-            <p className="text-gray-400 text-sm">Total Bets</p>
-            <p className="text-2xl font-bold text-white">{stats.totalBets}</p>
+    <div className="min-h-screen bg-[#0f1117] py-4 sm:py-8">
+      <div className="container mx-auto px-3 sm:px-4 max-w-3xl">
+
+        {/* Header */}
+        <div className="bg-[#1a1f2e] rounded-xl p-4 sm:p-5 border border-[#2a3042] mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-white">Bet History</h1>
+              <p className="text-xs sm:text-sm text-gray-400 mt-0.5">Your betting activity</p>
+            </div>
+            <button
+              onClick={loadBets}
+              className="px-3 py-1.5 rounded-lg bg-[#2a3042] text-gray-300 text-xs font-medium hover:bg-[#353b4d] transition-colors"
+            >
+              ↻ Refresh
+            </button>
           </div>
-          <div className="bg-[#1a1f2e] rounded-lg p-4">
-            <p className="text-gray-400 text-sm">Win Rate</p>
-            <p className="text-2xl font-bold text-green-400">
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-[#1a1f2e] rounded-lg p-3 border border-[#2a3042]">
+            <p className="text-gray-400 text-xs">Total Bets</p>
+            <p className="text-lg sm:text-2xl font-bold text-white">{stats.totalBets}</p>
+          </div>
+          <div className="bg-[#1a1f2e] rounded-lg p-3 border border-[#2a3042]">
+            <p className="text-gray-400 text-xs">Win Rate</p>
+            <p className="text-lg sm:text-2xl font-bold text-green-400">
               {stats.totalBets > 0 ? ((stats.wonBets / stats.totalBets) * 100).toFixed(1) : 0}%
             </p>
-            <p className="text-xs text-gray-500">{stats.wonBets} Won / {stats.lostBets} Lost</p>
+            <p className="text-[10px] text-gray-500">{stats.wonBets}W / {stats.lostBets}L</p>
           </div>
-          <div className="bg-[#1a1f2e] rounded-lg p-4">
-            <p className="text-gray-400 text-sm">Total Stake</p>
-            <p className="text-2xl font-bold text-white">₦{stats.totalStake.toFixed(2)}</p>
+          <div className="bg-[#1a1f2e] rounded-lg p-3 border border-[#2a3042]">
+            <p className="text-gray-400 text-xs">Total Stake</p>
+            <p className="text-lg sm:text-2xl font-bold text-white truncate">
+              KSh {stats.totalStake.toLocaleString()}
+            </p>
           </div>
-          <div className="bg-[#1a1f2e] rounded-lg p-4">
-            <p className="text-gray-400 text-sm">Profit/Loss</p>
-            <p className={`text-2xl font-bold ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              ₦{stats.profit.toFixed(2)}
+          <div className="bg-[#1a1f2e] rounded-lg p-3 border border-[#2a3042]">
+            <p className="text-gray-400 text-xs">Profit/Loss</p>
+            <p className={`text-lg sm:text-2xl font-bold truncate ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              KSh {stats.profit.toLocaleString()}
             </p>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-white">My Bets</h1>
-          <div className="flex flex-wrap gap-2">
-            {['ALL', 'PENDING', 'WON', 'LOST', 'CASHED_OUT'].map(status => (
-              <button
-                key={status}
-                onClick={() => setFilter(status)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === status
-                    ? 'bg-[#00b3b3] text-white'
-                    : 'bg-[#1a1f2e] text-gray-400 hover:bg-[#2a2f3f]'
-                }`}
-              >
-                {status.replace('_', ' ')}
-              </button>
-            ))}
-          </div>
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+          {[
+            { key: 'ALL', label: 'All', dot: null },
+            { key: 'PENDING', label: 'Pending', dot: 'bg-yellow-400' },
+            { key: 'WON', label: 'Won', dot: 'bg-green-500' },
+            { key: 'LOST', label: 'Lost', dot: 'bg-red-500' },
+            { key: 'CASHED_OUT', label: 'Cancelled', dot: 'bg-gray-400' }
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-2 ${
+                filter === f.key
+                  ? 'bg-[#2e7d32] text-white'
+                  : 'bg-[#1a1f2e] text-gray-400 hover:text-white border border-[#2a3042]'
+              }`}
+            >
+              {f.dot && <span className={`w-2 h-2 rounded-full ${f.dot}`} />}
+              {f.label}
+            </button>
+          ))}
         </div>
 
         {/* Bets List */}
         {loading ? (
           <div className="text-center py-12">
-            <div className="w-12 h-12 border-4 border-[#00b3b3] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <div className="w-12 h-12 border-4 border-[#2e7d32] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-gray-400">Loading bets...</p>
           </div>
         ) : filteredBets.length === 0 ? (
-          <div className="bg-[#1a1f2e] rounded-lg p-12 text-center">
-            <FiTrendingUp className="text-6xl text-gray-600 mx-auto mb-4" />
-            <h2 className="text-xl text-white mb-2">No bets yet</h2>
-            <p className="text-gray-400 mb-6">Start betting on matches to see your history here</p>
+          <div className="bg-[#1a1f2e] rounded-xl p-8 text-center border border-[#2a3042]">
+            <FiTrendingUp className="text-5xl text-gray-600 mx-auto mb-4" />
+            <h2 className="text-lg text-white mb-2">No bets yet</h2>
+            <p className="text-gray-400 mb-6 text-sm">Start betting on matches to see your history here</p>
             <Link
               to="/"
-              className="inline-block px-6 py-3 bg-[#00b3b3] text-white rounded-lg font-bold hover:bg-[#009999]"
+              className="inline-block px-6 py-3 bg-[#2e7d32] text-white rounded-lg font-bold hover:bg-[#1e5a22]"
             >
               Browse Matches
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
-            {filteredBets.map(bet => (
-              <div key={bet._id} className="bg-[#1a1f2e] rounded-lg p-6 border border-gray-800 hover:border-[#00b3b3]/30 transition-all">
-                {/* Bet Header */}
-                <div className="flex flex-wrap items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(bet.status)}`}>
-                      <span className="flex items-center space-x-1">
-                        {getStatusIcon(bet.status)}
-                        <span>{bet.status}</span>
+          <div className="space-y-3">
+            {filteredBets.map(bet => {
+              const betId = bet._id;
+              const code = (bet.reference || String(betId).slice(-10));
+              const date = bet.createdAt
+                ? format(new Date(bet.createdAt), 'MMM d')
+                : '';
+
+              // Support both formats: single match bet OR multi-selection bet
+              const selections = bet.selections || [];
+              const isMulti = selections.length > 1;
+              const firstMatch = selections[0]?.match || bet.match || {};
+              const home = firstMatch.homeTeam?.name || 'Home';
+              const away = firstMatch.awayTeam?.name || 'Away';
+              const matchLabel = isMulti
+                ? `${selections.length} selections`
+                : `${home} vs ${away}`;
+
+              return (
+                <Link
+                  key={betId}
+                  to={`/bet/${betId}`}
+                  className="block bg-[#1a1f2e] rounded-xl p-4 border border-[#2a3042] hover:border-[#2e7d32]/40 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(bet.status)}`} />
+                      <span className="text-xs text-gray-500 font-mono truncate">{code}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 flex-shrink-0">{date}</span>
+                  </div>
+
+                  <div className="mt-2">
+                    <p className="text-sm sm:text-base font-semibold text-white truncate">
+                      {matchLabel}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {isMulti ? 'Multi' : 'Single'}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-sm text-gray-300">
+                      Stake: <span className="font-bold text-white">KSh {Number(bet.stake || 0).toLocaleString()}</span>
+                    </span>
+                    <span className="text-gray-500 text-lg">›</span>
+                  </div>
+
+                  {/* Cashout row if available */}
+                  {bet.cashoutAvailable && !bet.cashoutTaken && bet.status === 'PENDING' && (
+                    <div className="mt-3 pt-3 border-t border-[#2a3042] flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <FiDollarSign className="text-[#2e7d32]" />
+                        <span className="text-xs text-gray-300">Cashout:</span>
+                        <span className="text-sm font-bold text-[#2e7d32]">
+                          KSh {Number(bet.cashoutValue || 0).toLocaleString()}
+                        </span>
+                      </div>
+                      <span className="px-3 py-1 bg-[#2e7d32] text-white rounded-lg text-xs font-bold">
+                        Cashout
                       </span>
-                    </span>
-                    <span className="text-sm text-gray-400">
-                      <FiCalendar className="inline mr-1" />
-                      {format(new Date(bet.createdAt), 'dd MMM yyyy, HH:mm')}
-                    </span>
-                  </div>
-                  <span className="text-xs bg-[#2a2f3f] px-2 py-1 rounded text-gray-300">
-                    Ref: {bet.reference || bet._id.slice(-8)}
-                  </span>
-                </div>
-
-                {/* Selections */}
-                <div className="space-y-3 mb-4">
-                  {bet.selections?.map((selection, idx) => (
-                    <div key={idx} className="flex flex-wrap items-center justify-between p-3 bg-[#0f1219] rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-white font-medium">
-                            {selection.match?.homeTeam?.name || 'Team A'} vs {selection.match?.awayTeam?.name || 'Team B'}
-                          </span>
-                          <span className="text-xs px-2 py-0.5 bg-[#2a2f3f] rounded text-gray-300">
-                            {selection.marketName}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {selection.match?.league || 'Unknown League'}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[#00b3b3] font-bold">@{selection.odds}</div>
-                        {selection.status !== 'PENDING' && (
-                          <div className={`text-xs mt-1 ${
-                            selection.status === 'WON' ? 'text-green-400' : 
-                            selection.status === 'LOST' ? 'text-red-400' : 'text-gray-400'
-                          }`}>
-                            {selection.status}
-                          </div>
-                        )}
-                      </div>
                     </div>
-                  ))}
-                </div>
-
-                {/* Bet Details */}
-                <div className="flex flex-wrap items-center justify-between pt-3 border-t border-gray-800">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
-                    <div>
-                      <p className="text-xs text-gray-500">Type</p>
-                      <p className="text-sm text-white">{bet.type}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Stake</p>
-                      <p className="text-sm text-white">₦{bet.stake}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Total Odds</p>
-                      <p className="text-sm text-[#00b3b3] font-bold">{bet.totalOdds}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Potential Win</p>
-                      <p className="text-sm text-green-400">₦{bet.potentialWin}</p>
-                    </div>
-                  </div>
-                  <Link
-                    to={`/bet/${bet._id}`}
-                    className="ml-4 px-4 py-2 bg-[#2a2f3f] text-white rounded-lg hover:bg-[#353b4d] transition-colors text-sm whitespace-nowrap"
-                  >
-                    View Details
-                  </Link>
-                </div>
-
-                {/* Cashout Info if available */}
-                {bet.cashoutAvailable && !bet.cashoutTaken && bet.status === 'PENDING' && (
-                  <div className="mt-3 pt-3 border-t border-gray-800 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <FiDollarSign className="text-[#00b3b3]" />
-                      <span className="text-sm text-gray-300">Cashout available:</span>
-                      <span className="text-lg font-bold text-[#00b3b3]">₦{bet.cashoutValue}</span>
-                    </div>
-                    <button className="px-4 py-2 bg-[#00b3b3] text-white rounded-lg hover:bg-[#009999] text-sm">
-                      Cashout Now
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>
