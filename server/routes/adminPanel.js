@@ -33,18 +33,15 @@ function buildMarkets(sport, odds = {}) {
   ];
 }
 
-// ── FULL market board generated from base 1X2 odds ──
 function generateExtendedMarkets(baseOdds) {
   const { home: H, draw: D, away: A } = baseOdds;
 
-  // Normalize 1X2 into implied probabilities
   const invH = 1 / H, invD = 1 / D, invA = 1 / A;
   const tot = invH + invD + invA;
   const pH = invH / tot, pD = invD / tot, pA = invA / tot;
 
   const toOdds = (p) => Math.max(1.01, +(1 / Math.max(p, 0.001)).toFixed(2));
 
-  // Poisson: P(total goals > line) given expected total λ
   function poissonOver(lambda, line) {
     let p = Math.exp(-lambda);
     let sum = p;
@@ -59,7 +56,6 @@ function generateExtendedMarkets(baseOdds) {
   const LAMBDA = 2.7;
   const LAMBDA_1H = LAMBDA * 0.45;
 
-  // ── Totals (full time) ──
   const totals = [];
   [0.5, 1.5, 2.5, 3.5, 4.5, 5.5].forEach(line => {
     const pOver = poissonOver(LAMBDA, line);
@@ -67,36 +63,32 @@ function generateExtendedMarkets(baseOdds) {
     totals.push({ name: `Under ${line}`, odds: toOdds(1 - pOver), isActive: true });
   });
 
-  // ── BTTS ──
   const pBtts = Math.min(0.75, 0.55 + 0.10 * (1 - Math.abs(pH - pA)));
   const btts = [
     { name: 'BTTS',    odds: toOdds(pBtts),     isActive: true },
     { name: 'BTTS No', odds: toOdds(1 - pBtts), isActive: true },
   ];
 
-  // ── 1X2 & BTTS ──
   const combos1x2Btts = [
-    { name: '1 & BTTS',    odds: toOdds(pH * pBtts * 0.75),         isActive: true },
-    { name: '1 & BTTS No', odds: toOdds(pH * (1 - pBtts) * 1.25),   isActive: true },
-    { name: 'X & BTTS',    odds: toOdds(pD * pBtts * 1.10),         isActive: true },
-    { name: 'X & BTTS No', odds: toOdds(pD * (1 - pBtts) * 1.10),   isActive: true },
-    { name: '2 & BTTS',    odds: toOdds(pA * pBtts * 0.75),         isActive: true },
-    { name: '2 & BTTS No', odds: toOdds(pA * (1 - pBtts) * 1.25),   isActive: true },
+    { name: '1 & BTTS',    odds: toOdds(pH * pBtts * 0.75),       isActive: true },
+    { name: '1 & BTTS No', odds: toOdds(pH * (1 - pBtts) * 1.25), isActive: true },
+    { name: 'X & BTTS',    odds: toOdds(pD * pBtts * 1.10),       isActive: true },
+    { name: 'X & BTTS No', odds: toOdds(pD * (1 - pBtts) * 1.10), isActive: true },
+    { name: '2 & BTTS',    odds: toOdds(pA * pBtts * 0.75),       isActive: true },
+    { name: '2 & BTTS No', odds: toOdds(pA * (1 - pBtts) * 1.25), isActive: true },
   ];
 
-  // ── 1X2 & Total 2.5 ──
   const pOver25 = poissonOver(LAMBDA, 2.5);
   const pUnder25 = 1 - pOver25;
   const combos1x2Total = [
-    { name: '1 & Over 2.5',  odds: toOdds(pH * pOver25 * 1.25),   isActive: true },
-    { name: '1 & Under 2.5', odds: toOdds(pH * pUnder25 * 1.55),  isActive: true },
-    { name: 'X & Over 2.5',  odds: toOdds(pD * pOver25 * 1.55),   isActive: true },
-    { name: 'X & Under 2.5', odds: toOdds(pD * pUnder25 * 1.40),  isActive: true },
-    { name: '2 & Over 2.5',  odds: toOdds(pA * pOver25 * 1.25),   isActive: true },
-    { name: '2 & Under 2.5', odds: toOdds(pA * pUnder25 * 1.55),  isActive: true },
+    { name: '1 & Over 2.5',  odds: toOdds(pH * pOver25 * 1.25),  isActive: true },
+    { name: '1 & Under 2.5', odds: toOdds(pH * pUnder25 * 1.55), isActive: true },
+    { name: 'X & Over 2.5',  odds: toOdds(pD * pOver25 * 1.55),  isActive: true },
+    { name: 'X & Under 2.5', odds: toOdds(pD * pUnder25 * 1.40), isActive: true },
+    { name: '2 & Over 2.5',  odds: toOdds(pA * pOver25 * 1.25),  isActive: true },
+    { name: '2 & Under 2.5', odds: toOdds(pA * pUnder25 * 1.55), isActive: true },
   ];
 
-  // ── Correct Score (full time) ──
   const csBase = {
     '0:0': 0.11, '0:1': 0.07, '0:2': 0.025, '0:3': 0.006, '0:4': 0.0015,
     '1:0': 0.15, '1:1': 0.13, '1:2': 0.05,  '1:3': 0.012, '1:4': 0.0025,
@@ -115,7 +107,6 @@ function generateExtendedMarkets(baseOdds) {
   });
   correctScore.push({ name: 'Other', odds: toOdds(0.04), isActive: true });
 
-  // ── Halftime / Fulltime ──
   const pH1 = Math.min(0.95, Math.sqrt(pH) * 0.6 + pH * 0.4);
   const pD1 = 0.34;
   const pA1 = Math.max(0.02, 1 - pH1 - pD1);
@@ -125,7 +116,6 @@ function generateExtendedMarkets(baseOdds) {
     ['2','1', pA1 * pH * 8.0 ], ['2','X', pA1 * pD * 4.0], ['2','2', pA1 * pA * 1.55],
   ].map(([ht, ft, p]) => ({ name: `${ht}/${ft}`, odds: toOdds(p), isActive: true }));
 
-  // ── 1st Half markets ──
   const oneH = [];
   oneH.push({ name: '1H 1', odds: toOdds(pH1), isActive: true });
   oneH.push({ name: '1H X', odds: toOdds(pD1), isActive: true });
@@ -271,6 +261,7 @@ router.put('/matches/:id', requireAdmin, async (req, res) => {
     const {
       status, score, minute, startsAt, homeTeam, awayTeam, league, sport,
       finalHomeScore, finalAwayScore, odds,
+      markets,   // ← NEW
     } = req.body;
 
     if (status) match.status = status;
@@ -295,6 +286,26 @@ router.put('/matches/:id', requireAdmin, async (req, res) => {
 
     if (odds && (odds.home || odds.draw || odds.away)) {
       applyOddsToMarkets(match, odds);
+    }
+
+    // ── NEW: bulk-update every named market ──
+    if (Array.isArray(markets)) {
+      for (const incoming of markets) {
+        if (!incoming?.name) continue;
+        const idx = match.markets.findIndex(m => m.name === incoming.name);
+        if (idx >= 0) {
+          match.markets[idx].odds = Number(incoming.odds);
+          if (incoming.isActive !== undefined) {
+            match.markets[idx].isActive = !!incoming.isActive;
+          }
+        } else {
+          match.markets.push({
+            name: incoming.name,
+            odds: Number(incoming.odds),
+            isActive: incoming.isActive !== false,
+          });
+        }
+      }
     }
 
     if (finalHomeScore !== undefined && finalHomeScore !== '' &&

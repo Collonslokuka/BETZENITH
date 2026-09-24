@@ -29,9 +29,32 @@ const LEAGUES = [
 
 const DEFAULT_ODDS = { home: '1.90', draw: '3.40', away: '3.80' };
 
-// ─── time helpers ───
-// Take a Date and return "YYYY-MM-DDTHH:mm" in the browser's LOCAL timezone.
-// This is what a datetime-local input needs.
+// ─── market grouping for the editor ───
+const WINNER       = ['1', 'X', '2', 'Home', 'Away'];
+const isDC         = n => n.startsWith('Double Chance');
+const isBTTS       = n => n === 'BTTS' || n === 'BTTS No';
+const is1H         = n => n.startsWith('1H ');
+const isHTFT       = n => /^[1X2]\/[1X2]$/.test(n);
+const isCS         = n => /^\d+:\d+$/.test(n) || n === 'Other' || n === '1H Other';
+const isCombo      = n => n.includes('&');
+
+function marketGroup(n) {
+  if (WINNER.includes(n)) return 'Match Winner';
+  if (isDC(n))            return 'Double Chance';
+  if (isBTTS(n))          return 'BTTS';
+  if (is1H(n))            return '1st Half';
+  if (isHTFT(n))          return 'Half / Full';
+  if (isCS(n))            return 'Correct Score';
+  if (isCombo(n))         return 'Combinations';
+  if (/^(Over|Under)/.test(n)) return 'Totals';
+  return 'Other';
+}
+
+const GROUP_ORDER = [
+  'Match Winner', 'Double Chance', 'Totals', 'BTTS',
+  'Combinations', 'Correct Score', 'Half / Full', '1st Half', 'Other',
+];
+
 function toLocalInput(date) {
   if (!date) return '';
   const d = date instanceof Date ? date : new Date(date);
@@ -40,13 +63,11 @@ function toLocalInput(date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Take a local "YYYY-MM-DDTHH:mm" string and return UTC ISO.
-// new Date("YYYY-MM-DDTHH:mm") parses as BROWSER-LOCAL time.
 function localInputToUTC(localStr) {
   if (!localStr) return null;
-  const d = new Date(localStr);      // treated as browser-local
+  const d = new Date(localStr);
   if (isNaN(d.getTime())) return null;
-  return d.toISOString();            // → "2026-09-24T15:00:00.000Z"
+  return d.toISOString();
 }
 
 function scoreFromWinnerMargin(winner, margin) {
@@ -59,10 +80,11 @@ function scoreFromWinnerMargin(winner, margin) {
 function getOddsFromMarkets(match) {
   const m = match.markets || [];
   const find = (name) => m.find(x => x.name === name)?.odds;
-  const home = find('1') ?? find('Home') ?? '';
-  const draw = find('X') ?? '';
-  const away = find('2') ?? find('Away') ?? '';
-  return { home, draw, away };
+  return {
+    home: find('1') ?? find('Home') ?? '',
+    draw: find('X') ?? '',
+    away: find('2') ?? find('Away') ?? '',
+  };
 }
 
 export default function AdminPanel() {
@@ -73,14 +95,13 @@ export default function AdminPanel() {
   const [predictions, setPredictions] = useState([]);
 
   const [form, setForm] = useState(() => {
-    // Initialize the input with LOCAL time, 10 min from now
     const d = new Date(Date.now() + 10 * 60 * 1000);
     return {
       sport: 'soccer',
       league: 'Club Friendly',
       homeTeam: '',
       awayTeam: '',
-      startsAt: toLocalInput(d),   // ← local, not UTC
+      startsAt: toLocalInput(d),
       winner: 'HOME',
       margin: '1',
       finalHomeScore: '1',
@@ -110,9 +131,7 @@ export default function AdminPanel() {
       setAuthed(true);
       toast.success('Welcome, Admin');
       loadMatches();
-    } catch {
-      toast.error('Wrong token');
-    }
+    } catch { toast.error('Wrong token'); }
   };
 
   const loadMatches = async () => {
@@ -133,13 +152,11 @@ export default function AdminPanel() {
 
   const createMatch = async (e) => {
     e.preventDefault();
-
     const oddsPayload = {};
     if (form.odds.home !== '') oddsPayload.home = Number(form.odds.home);
     if (form.odds.draw !== '') oddsPayload.draw = Number(form.odds.draw);
     if (form.odds.away !== '') oddsPayload.away = Number(form.odds.away);
 
-    // Convert the picker's local value → UTC before sending
     const startsAtUTC = localInputToUTC(form.startsAt);
     if (!startsAtUTC) return toast.error('Invalid start time');
 
@@ -150,18 +167,10 @@ export default function AdminPanel() {
         { headers: authHeaders }
       );
       toast.success(`Match created in ${form.league} — ${form.finalHomeScore}-${form.finalAwayScore}`);
-
-      // Reset form but keep league/sport, reset time to now+10min (local)
       const next = toLocalInput(new Date(Date.now() + 10 * 60 * 1000));
       setForm({
-        ...form,
-        homeTeam: '',
-        awayTeam: '',
-        startsAt: next,
-        winner: 'HOME',
-        margin: '1',
-        finalHomeScore: '1',
-        finalAwayScore: '0',
+        ...form, homeTeam: '', awayTeam: '', startsAt: next,
+        winner: 'HOME', margin: '1', finalHomeScore: '1', finalAwayScore: '0',
         odds: { ...DEFAULT_ODDS },
       });
       loadMatches();
@@ -171,37 +180,26 @@ export default function AdminPanel() {
   const updateScore = async (match, homeScore, awayScore, status) => {
     try {
       const r = await api.put(`/admin-panel/matches/${match._id}`, {
-        score: { home: homeScore, away: awayScore },
-        status,
+        score: { home: homeScore, away: awayScore }, status,
       }, { headers: authHeaders });
 
       const s = r.data.settlement;
       if (s && s.settled > 0) {
         toast.success(`Settled ${s.settled} bet${s.settled > 1 ? 's' : ''} — ${s.won} won, ${s.lost} lost`);
-      } else {
-        toast.success('Updated');
-      }
+      } else { toast.success('Updated'); }
       loadMatches();
     } catch (e) { toast.error('Failed'); }
   };
 
-  // NEW: update start time (frontend converts local → UTC)
   const updateTime = async (match, localStartsAt) => {
     if (!localStartsAt) return toast.error('Pick a time first');
     const iso = localInputToUTC(localStartsAt);
     if (!iso) return toast.error('Invalid time');
-
     try {
-      await api.put(
-        `/admin-panel/matches/${match._id}`,
-        { startsAt: iso },
-        { headers: authHeaders }
-      );
+      await api.put(`/admin-panel/matches/${match._id}`, { startsAt: iso }, { headers: authHeaders });
       toast.success('Start time updated');
       loadMatches();
-    } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to update time');
-    }
+    } catch (e) { toast.error(e.response?.data?.message || 'Failed to update time'); }
   };
 
   const updateOdds = async (match, odds) => {
@@ -209,12 +207,26 @@ export default function AdminPanel() {
     if (odds.home !== '') oddsPayload.home = Number(odds.home);
     if (odds.draw !== '') oddsPayload.draw = Number(odds.draw);
     if (odds.away !== '') oddsPayload.away = Number(odds.away);
-
     try {
       await api.put(`/admin-panel/matches/${match._id}`, { odds: oddsPayload }, { headers: authHeaders });
-      toast.success('Odds updated');
+      toast.success('Base odds updated');
       loadMatches();
     } catch (e) { toast.error('Failed to update odds'); }
+  };
+
+  // NEW: bulk-update every market
+  const updateMarkets = async (match, marketsPayload) => {
+    try {
+      await api.put(
+        `/admin-panel/matches/${match._id}`,
+        { markets: marketsPayload },
+        { headers: authHeaders }
+      );
+      toast.success('All markets updated');
+      loadMatches();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update markets');
+    }
   };
 
   const setTarget = async (matchId, homeScore, awayScore) => {
@@ -240,9 +252,7 @@ export default function AdminPanel() {
     try {
       await navigator.clipboard.writeText(url);
       toast.success('Match link copied!');
-    } catch {
-      toast.error('Copy failed — ' + url);
-    }
+    } catch { toast.error('Copy failed — ' + url); }
   };
 
   const generatePrediction = async () => {
@@ -272,11 +282,8 @@ export default function AdminPanel() {
             <p className="text-gray-400 text-sm">Enter your admin token to continue</p>
           </div>
           <input
-            type="password"
-            value={token}
-            onChange={e => setToken(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && login()}
-            placeholder="Admin token"
+            type="password" value={token} onChange={e => setToken(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && login()} placeholder="Admin token"
             className="w-full px-4 py-3 bg-[#2a2f3f] rounded-lg text-white mb-4 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]"
           />
           <button onClick={login} className="w-full py-3 bg-[#2e7d32] text-white rounded-lg font-bold hover:bg-[#1e5a22] transition-colors">
@@ -310,12 +317,11 @@ export default function AdminPanel() {
 
         {tab === 'matches' && (
           <>
-            {/* Create form */}
             <div className="bg-[#1a1f2e] rounded-xl p-6 border border-[#2a3042] mb-6">
               <h2 className="text-xl font-bold text-white mb-1">Create Match</h2>
               <p className="text-xs text-gray-500 mb-4">
                 Times are shown in <strong className="text-gray-300">your local timezone</strong>. The match will kick off
-                at exactly this time and play out to the score you set.
+                at exactly this time and play out to the score you set. After creating, expand <strong className="text-gray-300">📋 Markets</strong> on the row to tune every market.
               </p>
               <form onSubmit={createMatch} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white">
@@ -328,7 +334,6 @@ export default function AdminPanel() {
                 <input placeholder="Away Team" value={form.awayTeam} onChange={e => setForm({ ...form, awayTeam: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
                 <input type="datetime-local" value={form.startsAt} onChange={e => setForm({ ...form, startsAt: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white md:col-span-2" required />
 
-                {/* Winner + margin */}
                 <div className="md:col-span-2 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div className="text-xs text-gray-400 mb-2 font-medium">Result — Winner &amp; Margin</div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -353,9 +358,8 @@ export default function AdminPanel() {
                   </div>
                 </div>
 
-                {/* Odds */}
                 <div className="md:col-span-2 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
-                  <div className="text-xs text-gray-400 mb-2 font-medium">Odds (decimal)</div>
+                  <div className="text-xs text-gray-400 mb-2 font-medium">Base 1X2 Odds (decimal)</div>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-[11px] text-gray-500 block mb-1">Home</label>
@@ -375,7 +379,6 @@ export default function AdminPanel() {
                   </button>
                 </div>
 
-                {/* Manual score override */}
                 <div className="md:col-span-2 grid grid-cols-2 gap-4 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div>
                     <label className="text-xs text-gray-400 block mb-1">Final Home Score</label>
@@ -391,10 +394,9 @@ export default function AdminPanel() {
               </form>
             </div>
 
-            {/* List */}
             <div className="bg-[#1a1f2e] rounded-xl p-6 border border-[#2a3042]">
               <h2 className="text-xl font-bold text-white mb-4">Recent Matches ({matches.length})</h2>
-              <div className="space-y-3 max-h-[600px] overflow-y-auto">
+              <div className="space-y-3 max-h-[800px] overflow-y-auto">
                 {matches.map(m => (
                   <MatchRow
                     key={m._id}
@@ -406,6 +408,7 @@ export default function AdminPanel() {
                     onSetTarget={setTarget}
                     onCopyLink={copyMatchLink}
                     onUpdateOdds={updateOdds}
+                    onUpdateMarkets={updateMarkets}
                   />
                 ))}
               </div>
@@ -456,16 +459,22 @@ export default function AdminPanel() {
   );
 }
 
-function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTarget, onCopyLink, onUpdateOdds }) {
+function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTarget, onCopyLink, onUpdateOdds, onUpdateMarkets }) {
   const [home, setHome] = useState(match.score.home);
   const [away, setAway] = useState(match.score.away);
   const [status, setStatus] = useState(match.status);
-
-  // Local time string for the datetime-local input
   const [startsAt, setStartsAt] = useState(toLocalInput(match.startsAt));
+  const [showMarkets, setShowMarkets] = useState(false);
+
+  // Editable copy of every market
+  const [allMarkets, setAllMarkets] = useState(() =>
+    (match.markets || []).map(m => ({ name: m.name, odds: String(m.odds), isActive: m.isActive !== false }))
+  );
+
+  useEffect(() => { setStartsAt(toLocalInput(match.startsAt)); }, [match.startsAt]);
   useEffect(() => {
-    setStartsAt(toLocalInput(match.startsAt));
-  }, [match.startsAt]);
+    setAllMarkets((match.markets || []).map(m => ({ name: m.name, odds: String(m.odds), isActive: m.isActive !== false })));
+  }, [match._id, match.markets?.length, JSON.stringify(match.markets?.map(m => m.odds))]);
 
   const initial = getOddsFromMarkets(match);
   const [odds, setOdds] = useState({
@@ -493,10 +502,31 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
   const timeDirty = startsAt !== toLocalInput(match.startsAt);
   const canEditTime = match.status === 'SCHEDULED';
 
-  return (
-    <div className="flex flex-col gap-3 p-3 bg-[#0f1219] rounded-lg">
+  // Group markets for display
+  const grouped = {};
+  for (const m of allMarkets) {
+    const g = marketGroup(m.name);
+    if (!grouped[g]) grouped[g] = [];
+    grouped[g].push(m);
+  }
+  const groupsInOrder = GROUP_ORDER.filter(g => grouped[g]?.length);
 
-      {/* Row 1 — teams, score, status, actions */}
+  const marketsDirty = JSON.stringify(
+    allMarkets.map(m => ({ n: m.name, o: m.odds, a: m.isActive }))
+  ) !== JSON.stringify(
+    (match.markets || []).map(m => ({ n: m.name, o: String(m.odds), a: m.isActive !== false }))
+  );
+
+  const setMarketOdds = (name, value) => {
+    setAllMarkets(prev => prev.map(m => m.name === name ? { ...m, odds: value } : m));
+  };
+
+  const marketCount = (match.markets || []).length;
+
+  return (
+    <div className="flex flex-col gap-3 p-3 bg-[#0f1219] rounded-lg border border-[#1f2535]">
+
+      {/* Row 1 — teams / score / status / actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
         <div className="flex-1 text-sm min-w-0">
           <div className="text-white font-medium truncate flex items-center gap-2 flex-wrap">
@@ -506,6 +536,9 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
                 🎯 {target.homeScore}-{target.awayScore}
               </span>
             )}
+            <span className="text-[10px] bg-gray-500/20 text-gray-400 px-2 py-0.5 rounded-full">
+              {marketCount} markets
+            </span>
           </div>
           <div className="text-xs text-gray-500 truncate">
             {match.league} • {new Date(match.startsAt).toLocaleString()} • {match.status}
@@ -527,42 +560,97 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
         </div>
       </div>
 
-      {/* Row 2 — odds editor */}
+      {/* Row 2 — base 1X2 + Markets toggle */}
       <div className="flex flex-wrap items-center gap-2 pl-1">
-        <span className="text-[11px] text-gray-500 uppercase tracking-wide">Odds</span>
+        <span className="text-[11px] text-gray-500 uppercase tracking-wide">Base 1X2</span>
         <input type="number" step="0.01" min="1.01" placeholder="1" value={odds.home} onChange={e => setOdds({ ...odds, home: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
         <input type="number" step="0.01" min="1.01" placeholder="X" value={odds.draw} onChange={e => setOdds({ ...odds, draw: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
         <input type="number" step="0.01" min="1.01" placeholder="2" value={odds.away} onChange={e => setOdds({ ...odds, away: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
         <button onClick={() => onUpdateOdds(match, odds)} disabled={!oddsDirty}
           className={`px-2 py-1 text-xs rounded ${oddsDirty ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'}`}>
-          Save Odds
+          Save Base
         </button>
-        {!hasOdds && <span className="text-[10px] text-gray-600">no odds set</span>}
+        <button
+          onClick={() => setShowMarkets(v => !v)}
+          className="px-2 py-1 text-xs rounded bg-[#0d4f6e] text-white hover:bg-[#0a3f58]"
+        >
+          {showMarkets ? '▲ Hide Markets' : `▼ 📋 Markets (${marketCount})`}
+        </button>
       </div>
 
-      {/* Row 3 — start time editor */}
+      {/* Row 3 — start time */}
       <div className="flex flex-wrap items-center gap-2 pl-1">
         <span className="text-[11px] text-gray-500 uppercase tracking-wide">Start time</span>
         <input
-          type="datetime-local"
-          value={startsAt}
-          onChange={e => setStartsAt(e.target.value)}
+          type="datetime-local" value={startsAt} onChange={e => setStartsAt(e.target.value)}
           disabled={!canEditTime}
           className={`px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs ${canEditTime ? '' : 'opacity-50 cursor-not-allowed'}`}
         />
-        <button
-          onClick={() => onUpdateTime(match, startsAt)}
-          disabled={!timeDirty || !canEditTime}
+        <button onClick={() => onUpdateTime(match, startsAt)} disabled={!timeDirty || !canEditTime}
           className={`px-2 py-1 text-xs rounded ${
             timeDirty && canEditTime ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'
-          }`}
-        >
+          }`}>
           Save Time
         </button>
         <span className="text-[10px] text-gray-600">
           {canEditTime ? 'Your local time' : `Locked — match is ${match.status}`}
         </span>
       </div>
+
+      {/* ─── EXPANDED: full market board ─── */}
+      {showMarkets && (
+        <div className="mt-1 p-3 bg-[#0a0e16] rounded-lg border border-[#1f2535] space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-400">
+              Edit any market's odds. Press <strong className="text-white">Save Markets</strong> to publish.
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAllMarkets((match.markets || []).map(m => ({ name: m.name, odds: String(m.odds), isActive: m.isActive !== false })))}
+                className="px-2 py-1 text-[11px] rounded bg-[#2a2f3f] text-gray-300 hover:text-white"
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => onUpdateMarkets(match, allMarkets)}
+                disabled={!marketsDirty}
+                className={`px-3 py-1 text-[11px] rounded font-bold ${
+                  marketsDirty ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Save Markets
+              </button>
+            </div>
+          </div>
+
+          {groupsInOrder.map(groupName => (
+            <div key={groupName}>
+              <div className="text-[10px] font-bold tracking-wider text-emerald-400 uppercase mb-2">
+                {groupName}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {grouped[groupName].map(m => (
+                  <div key={m.name} className="flex items-center justify-between gap-1 px-2 py-1 bg-[#141a26] rounded border border-[#1f2535]">
+                    <span className="text-[10px] text-gray-300 truncate" title={m.name}>{m.name}</span>
+                    <input
+                      type="number" step="0.01" min="1.01"
+                      value={m.odds}
+                      onChange={e => setMarketOdds(m.name, e.target.value)}
+                      className="w-14 px-1 py-0.5 bg-[#0a0e16] rounded text-white text-[11px] text-right tabular-nums"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {allMarkets.length === 0 && (
+            <div className="text-center text-gray-500 text-xs py-4">
+              This match has no markets. It was probably created before the extended board was added. Delete it and create a new one.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
