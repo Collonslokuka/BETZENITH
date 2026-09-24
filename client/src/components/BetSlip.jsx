@@ -248,9 +248,6 @@ export default function BetSlip() {
                       💡 Suggested stake: KSh {aiRecommendation.suggestedStake.toLocaleString()}
                     </div>
                   )}
-                  <div className="text-[10px] mt-1 opacity-50">
-                    Win probability: {aiRecommendation.probability}%
-                  </div>
                 </div>
               </div>
             </div>
