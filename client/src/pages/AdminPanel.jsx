@@ -29,6 +29,26 @@ const LEAGUES = [
 
 const DEFAULT_ODDS = { home: '1.90', draw: '3.40', away: '3.80' };
 
+// ─── time helpers ───
+// Take a Date and return "YYYY-MM-DDTHH:mm" in the browser's LOCAL timezone.
+// This is what a datetime-local input needs.
+function toLocalInput(date) {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Take a local "YYYY-MM-DDTHH:mm" string and return UTC ISO.
+// new Date("YYYY-MM-DDTHH:mm") parses as BROWSER-LOCAL time.
+function localInputToUTC(localStr) {
+  if (!localStr) return null;
+  const d = new Date(localStr);      // treated as browser-local
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();            // → "2026-09-24T15:00:00.000Z"
+}
+
 function scoreFromWinnerMargin(winner, margin) {
   const m = Math.max(0, Math.min(20, Math.floor(Number(margin) || 0)));
   if (winner === 'HOME') return { home: String(m), away: '0' };
@@ -45,15 +65,6 @@ function getOddsFromMarkets(match) {
   return { home, draw, away };
 }
 
-// Convert a UTC ISO date to the local `YYYY-MM-DDTHH:MM` format the input expects
-function toLocalInput(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export default function AdminPanel() {
   const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
   const [authed, setAuthed] = useState(false);
@@ -62,15 +73,14 @@ export default function AdminPanel() {
   const [predictions, setPredictions] = useState([]);
 
   const [form, setForm] = useState(() => {
+    // Initialize the input with LOCAL time, 10 min from now
     const d = new Date(Date.now() + 10 * 60 * 1000);
-    const pad = n => String(n).padStart(2, '0');
-    const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     return {
       sport: 'soccer',
       league: 'Club Friendly',
       homeTeam: '',
       awayTeam: '',
-      startsAt: local,
+      startsAt: toLocalInput(d),   // ← local, not UTC
       winner: 'HOME',
       margin: '1',
       finalHomeScore: '1',
@@ -129,8 +139,9 @@ export default function AdminPanel() {
     if (form.odds.draw !== '') oddsPayload.draw = Number(form.odds.draw);
     if (form.odds.away !== '') oddsPayload.away = Number(form.odds.away);
 
-    // Interpret the picker as the admin's LOCAL time, then send UTC
-    const startsAtUTC = new Date(form.startsAt).toISOString();
+    // Convert the picker's local value → UTC before sending
+    const startsAtUTC = localInputToUTC(form.startsAt);
+    if (!startsAtUTC) return toast.error('Invalid start time');
 
     try {
       await api.post(
@@ -139,11 +150,21 @@ export default function AdminPanel() {
         { headers: authHeaders }
       );
       toast.success(`Match created in ${form.league} — ${form.finalHomeScore}-${form.finalAwayScore}`);
+
+      // Reset form but keep league/sport, reset time to now+10min (local)
+      const next = toLocalInput(new Date(Date.now() + 10 * 60 * 1000));
+      setForm({
+        ...form,
+        homeTeam: '',
+        awayTeam: '',
+        startsAt: next,
+        winner: 'HOME',
+        margin: '1',
+        finalHomeScore: '1',
+        finalAwayScore: '0',
+        odds: { ...DEFAULT_ODDS },
+      });
       loadMatches();
-      const d = new Date(Date.now() + 10 * 60 * 1000);
-      const pad = n => String(n).padStart(2, '0');
-      const next = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      setForm({ ...form, homeTeam: '', awayTeam: '', startsAt: next, winner: 'HOME', margin: '1', finalHomeScore: '1', finalAwayScore: '0', odds: { ...DEFAULT_ODDS } });
     } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }
   };
 
@@ -164,12 +185,18 @@ export default function AdminPanel() {
     } catch (e) { toast.error('Failed'); }
   };
 
-  // NEW: edit the start time of an existing match
+  // NEW: update start time (frontend converts local → UTC)
   const updateTime = async (match, localStartsAt) => {
     if (!localStartsAt) return toast.error('Pick a time first');
-    const iso = new Date(localStartsAt).toISOString();
+    const iso = localInputToUTC(localStartsAt);
+    if (!iso) return toast.error('Invalid time');
+
     try {
-      await api.put(`/admin-panel/matches/${match._id}`, { startsAt: iso }, { headers: authHeaders });
+      await api.put(
+        `/admin-panel/matches/${match._id}`,
+        { startsAt: iso },
+        { headers: authHeaders }
+      );
       toast.success('Start time updated');
       loadMatches();
     } catch (e) {
@@ -283,12 +310,12 @@ export default function AdminPanel() {
 
         {tab === 'matches' && (
           <>
-            {/* Create form (unchanged) */}
+            {/* Create form */}
             <div className="bg-[#1a1f2e] rounded-xl p-6 border border-[#2a3042] mb-6">
               <h2 className="text-xl font-bold text-white mb-1">Create Match</h2>
               <p className="text-xs text-gray-500 mb-4">
-                Pick the winner and margin, set the odds and start time. When the start time arrives, the match
-                will kick off and play out to the result you set, then settle any bets at FINISHED.
+                Times are shown in <strong className="text-gray-300">your local timezone</strong>. The match will kick off
+                at exactly this time and play out to the score you set.
               </p>
               <form onSubmit={createMatch} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white">
@@ -301,6 +328,7 @@ export default function AdminPanel() {
                 <input placeholder="Away Team" value={form.awayTeam} onChange={e => setForm({ ...form, awayTeam: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
                 <input type="datetime-local" value={form.startsAt} onChange={e => setForm({ ...form, startsAt: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white md:col-span-2" required />
 
+                {/* Winner + margin */}
                 <div className="md:col-span-2 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div className="text-xs text-gray-400 mb-2 font-medium">Result — Winner &amp; Margin</div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -325,6 +353,7 @@ export default function AdminPanel() {
                   </div>
                 </div>
 
+                {/* Odds */}
                 <div className="md:col-span-2 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div className="text-xs text-gray-400 mb-2 font-medium">Odds (decimal)</div>
                   <div className="grid grid-cols-3 gap-3">
@@ -346,6 +375,7 @@ export default function AdminPanel() {
                   </button>
                 </div>
 
+                {/* Manual score override */}
                 <div className="md:col-span-2 grid grid-cols-2 gap-4 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div>
                     <label className="text-xs text-gray-400 block mb-1">Final Home Score</label>
@@ -355,14 +385,13 @@ export default function AdminPanel() {
                     <label className="text-xs text-gray-400 block mb-1">Final Away Score</label>
                     <input type="number" min="0" max="20" value={form.finalAwayScore} onChange={e => setForm({ ...form, finalAwayScore: e.target.value })} className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" />
                   </div>
-                  <p className="col-span-2 text-[10px] text-gray-500">Auto-filled by the winner &amp; margin picker above — edit directly if you want a specific scoreline.</p>
                 </div>
 
                 <button type="submit" className="px-6 py-2 bg-[#2e7d32] text-white rounded-lg font-bold md:col-span-2">Create Match</button>
               </form>
             </div>
 
-            {/* Matches list */}
+            {/* List */}
             <div className="bg-[#1a1f2e] rounded-xl p-6 border border-[#2a3042]">
               <h2 className="text-xl font-bold text-white mb-4">Recent Matches ({matches.length})</h2>
               <div className="space-y-3 max-h-[600px] overflow-y-auto">
@@ -371,7 +400,7 @@ export default function AdminPanel() {
                     key={m._id}
                     match={m}
                     onUpdate={updateScore}
-                    onUpdateTime={updateTime}          // NEW
+                    onUpdateTime={updateTime}
                     onDelete={deleteMatch}
                     onPredict={(id) => setPredForm({ ...predForm, matchId: id })}
                     onSetTarget={setTarget}
@@ -431,9 +460,9 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
   const [home, setHome] = useState(match.score.home);
   const [away, setAway] = useState(match.score.away);
   const [status, setStatus] = useState(match.status);
-  const [startsAt, setStartsAt] = useState(toLocalInput(match.startsAt));
 
-  // Sync when the parent reloads the list
+  // Local time string for the datetime-local input
+  const [startsAt, setStartsAt] = useState(toLocalInput(match.startsAt));
   useEffect(() => {
     setStartsAt(toLocalInput(match.startsAt));
   }, [match.startsAt]);
@@ -462,11 +491,12 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
     String(odds.draw) !== String(initial.draw ?? '') ||
     String(odds.away) !== String(initial.away ?? '');
   const timeDirty = startsAt !== toLocalInput(match.startsAt);
+  const canEditTime = match.status === 'SCHEDULED';
 
   return (
     <div className="flex flex-col gap-3 p-3 bg-[#0f1219] rounded-lg">
 
-      {/* Row 1: teams + score + status + actions */}
+      {/* Row 1 — teams, score, status, actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
         <div className="flex-1 text-sm min-w-0">
           <div className="text-white font-medium truncate flex items-center gap-2 flex-wrap">
@@ -497,12 +527,12 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
         </div>
       </div>
 
-      {/* Row 2: odds editor */}
+      {/* Row 2 — odds editor */}
       <div className="flex flex-wrap items-center gap-2 pl-1">
         <span className="text-[11px] text-gray-500 uppercase tracking-wide">Odds</span>
-        <input type="number" step="0.01" min="1.01" placeholder="1" value={odds.home} onChange={e => setOdds({ ...odds, home: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" title="Home odds" />
-        <input type="number" step="0.01" min="1.01" placeholder="X" value={odds.draw} onChange={e => setOdds({ ...odds, draw: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" title="Draw odds" />
-        <input type="number" step="0.01" min="1.01" placeholder="2" value={odds.away} onChange={e => setOdds({ ...odds, away: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" title="Away odds" />
+        <input type="number" step="0.01" min="1.01" placeholder="1" value={odds.home} onChange={e => setOdds({ ...odds, home: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
+        <input type="number" step="0.01" min="1.01" placeholder="X" value={odds.draw} onChange={e => setOdds({ ...odds, draw: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
+        <input type="number" step="0.01" min="1.01" placeholder="2" value={odds.away} onChange={e => setOdds({ ...odds, away: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
         <button onClick={() => onUpdateOdds(match, odds)} disabled={!oddsDirty}
           className={`px-2 py-1 text-xs rounded ${oddsDirty ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'}`}>
           Save Odds
@@ -510,25 +540,27 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
         {!hasOdds && <span className="text-[10px] text-gray-600">no odds set</span>}
       </div>
 
-      {/* Row 3: NEW — start time editor */}
+      {/* Row 3 — start time editor */}
       <div className="flex flex-wrap items-center gap-2 pl-1">
         <span className="text-[11px] text-gray-500 uppercase tracking-wide">Start time</span>
         <input
           type="datetime-local"
           value={startsAt}
           onChange={e => setStartsAt(e.target.value)}
-          className="px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs"
-          title="Match kickoff time"
+          disabled={!canEditTime}
+          className={`px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs ${canEditTime ? '' : 'opacity-50 cursor-not-allowed'}`}
         />
         <button
           onClick={() => onUpdateTime(match, startsAt)}
-          disabled={!timeDirty}
-          className={`px-2 py-1 text-xs rounded ${timeDirty ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'}`}
+          disabled={!timeDirty || !canEditTime}
+          className={`px-2 py-1 text-xs rounded ${
+            timeDirty && canEditTime ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'
+          }`}
         >
           Save Time
         </button>
         <span className="text-[10px] text-gray-600">
-          {match.status === 'SCHEDULED' ? 'Editable until kickoff' : `Locked — match is ${match.status}`}
+          {canEditTime ? 'Your local time' : `Locked — match is ${match.status}`}
         </span>
       </div>
     </div>
