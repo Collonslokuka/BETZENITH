@@ -16,6 +16,82 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Build the base markets array from home/draw/away odds
+function buildMarkets(sport, odds = {}) {
+  const h = Number(odds.home) || 2.10;
+  const d = Number(odds.draw) || 3.40;
+  const a = Number(odds.away) || 2.10;
+
+  if (sport === 'soccer') {
+    return [
+      { name: '1', odds: h, isActive: true },
+      { name: 'X', odds: d, isActive: true },
+      { name: '2', odds: a, isActive: true },
+    ];
+  }
+  return [
+    { name: 'Home', odds: h, isActive: true },
+    { name: 'Away', odds: a, isActive: true },
+  ];
+}
+
+// Generate combination + correct-score markets for a soccer match
+// from the base 1X2 odds. Called on create so the board is always full.
+function generateExtendedMarkets(baseOdds) {
+  const { home, draw, away } = baseOdds;
+
+  const combos = [
+    { name: '1 & Over 2.5',  odds: +(home * 2.04).toFixed(2), isActive: true },
+    { name: '1 & Under 2.5', odds: +(home * 2.89).toFixed(2), isActive: true },
+    { name: 'X & Over 2.5',  odds: +(draw * 1.29).toFixed(2), isActive: true },
+    { name: 'X & Under 2.5', odds: +(draw * 1.83).toFixed(2), isActive: true },
+    { name: '2 & Over 2.5',  odds: +(away * 2.04).toFixed(2), isActive: true },
+    { name: '2 & Under 2.5', odds: +(away * 2.89).toFixed(2), isActive: true },
+  ];
+
+  const csBase = {
+    '0:0': 6.62,  '0:1': 13.08, '0:2': 49.58, '0:3': 105.45, '0:4': 107.65,
+    '1:0': 4.96,  '1:1': 6.20,  '1:2': 39.81, '1:3': 96.13,  '1:4': 94.22,
+    '2:0': 17.69, '2:1': 14.65, '2:2': 19.41, '2:3': 104.04, '2:4': 105.47,
+    '3:0': 56.99, '3:1': 50.88, '3:2': 48.51, '3:3': 108.56, '3:4': 108.64,
+    '4:0': 72.88, '4:1': 72.00, '4:2': 90.00, '4:3': 100.00, '4:4': 150.00,
+  };
+
+  const homeTilt = 2.10 / Math.max(1.2, home);
+  const awayTilt = 2.10 / Math.max(1.2, away);
+
+  const correctScore = Object.entries(csBase).map(([name, odds]) => {
+    const [h, a] = name.split(':').map(Number);
+    let adj = 1;
+    if (h > a) adj = homeTilt;
+    else if (a > h) adj = awayTilt;
+    return { name, odds: +(odds * adj).toFixed(2), isActive: true };
+  });
+
+  return [...combos, ...correctScore];
+}
+
+// Apply incoming odds onto an existing markets array (used by PUT)
+function applyOddsToMarkets(match, odds = {}) {
+  if (!match.markets || !Array.isArray(match.markets)) return;
+  const sport = (match.sport || 'soccer').toLowerCase();
+  const findIdx = (name) => match.markets.findIndex(m => m.name === name);
+
+  if (sport === 'soccer') {
+    const hIdx = findIdx('1');
+    const dIdx = findIdx('X');
+    const aIdx = findIdx('2');
+    if (hIdx >= 0 && odds.home) match.markets[hIdx].odds = Number(odds.home);
+    if (dIdx >= 0 && odds.draw) match.markets[dIdx].odds = Number(odds.draw);
+    if (aIdx >= 0 && odds.away) match.markets[aIdx].odds = Number(odds.away);
+  } else {
+    const hIdx = findIdx('Home');
+    const aIdx = findIdx('Away');
+    if (hIdx >= 0 && odds.home) match.markets[hIdx].odds = Number(odds.home);
+    if (aIdx >= 0 && odds.away) match.markets[aIdx].odds = Number(odds.away);
+  }
+}
+
 // ============================================================
 //  AUTH
 // ============================================================
@@ -48,7 +124,7 @@ router.get('/matches', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
-//  CREATE MATCH (with optional scripted final score)
+//  CREATE MATCH (with optional scripted final score + odds)
 // ============================================================
 router.post('/matches', requireAdmin, async (req, res) => {
   try {
@@ -60,6 +136,7 @@ router.post('/matches', requireAdmin, async (req, res) => {
       startsAt,
       finalHomeScore,
       finalAwayScore,
+      odds = {},
     } = req.body;
 
     if (!league || !homeTeam || !awayTeam || !startsAt) {
@@ -74,31 +151,18 @@ router.post('/matches', requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid startsAt' });
     }
 
-    const marketSets = {
-      soccer: [
-        { name: '1', odds: 2.10, isActive: true },
-        { name: 'X', odds: 3.40, isActive: true },
-        { name: '2', odds: 2.10, isActive: true },
-      ],
-      basketball: [
-        { name: 'Home', odds: 1.90, isActive: true },
-        { name: 'Away', odds: 1.90, isActive: true },
-      ],
-      tennis: [
-        { name: 'Home', odds: 1.85, isActive: true },
-        { name: 'Away', odds: 1.95, isActive: true },
-      ],
-      default: [
-        { name: '1', odds: 2.00, isActive: true },
-        { name: 'X', odds: 3.20, isActive: true },
-        { name: '2', odds: 2.00, isActive: true },
-      ],
-    };
-
-    // Scripted outcome is set if BOTH target scores are provided
     const hasScript =
       finalHomeScore !== undefined && finalHomeScore !== '' &&
       finalAwayScore !== undefined && finalAwayScore !== '';
+
+    const baseMarkets = buildMarkets(sport, odds);
+    const extended = sport === 'soccer'
+      ? generateExtendedMarkets({
+          home: Number(odds.home) || 2.10,
+          draw: Number(odds.draw) || 3.40,
+          away: Number(odds.away) || 2.10,
+        })
+      : [];
 
     const match = await Match.create({
       sport,
@@ -111,7 +175,7 @@ router.post('/matches', requireAdmin, async (req, res) => {
       status: 'SCHEDULED',
       minute: 0,
       score: { home: 0, away: 0 },
-      markets: marketSets[sport] || marketSets.default,
+      markets: [...baseMarkets, ...extended],
       events: [],
       source: 'admin-manual',
       scriptedOutcome: hasScript
@@ -135,7 +199,7 @@ router.put('/matches/:id', requireAdmin, async (req, res) => {
 
     const {
       status, score, minute, startsAt, homeTeam, awayTeam, league, sport,
-      finalHomeScore, finalAwayScore,
+      finalHomeScore, finalAwayScore, odds,
     } = req.body;
 
     if (status) match.status = status;
@@ -148,6 +212,11 @@ router.put('/matches/:id', requireAdmin, async (req, res) => {
     if (awayTeam) match.awayTeam.name = awayTeam;
     if (league) match.league = league;
     if (sport) match.sport = sport;
+
+    // Update the base odds inside match.markets when supplied
+    if (odds && (odds.home || odds.draw || odds.away)) {
+      applyOddsToMarkets(match, odds);
+    }
 
     // Case 1: explicit final score given -> set target
     if (finalHomeScore !== undefined && finalHomeScore !== '' &&
@@ -293,6 +362,7 @@ router.get('/predict/:slug', async (req, res) => {
           score: match.score,
           minute: match.minute,
           result: match.result,
+          markets: match.markets,   // NEW — full board for the prediction page
         },
       },
     });
