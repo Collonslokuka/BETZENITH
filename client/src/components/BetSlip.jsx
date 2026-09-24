@@ -1,12 +1,11 @@
 // src/components/BetSlip.jsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useBetSlip } from '../context/BetSlipContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { placeBet } from '../services/api';
-import { FiTrash2, FiShoppingCart, FiCpu, FiLock } from 'react-icons/fi';
+import { FiTrash2, FiShoppingCart } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import api from '../services/axios';
 
 const MINIMUM_STAKE = 500;
 
@@ -25,83 +24,8 @@ export default function BetSlip() {
   const navigate = useNavigate();
   const [placing, setPlacing] = useState(false);
   const [activeTab, setActiveTab] = useState('ordinary');
-  const [aiRecommendation, setAiRecommendation] = useState(null);
-  const [loadingAI, setLoadingAI] = useState(false);
 
   const totalOdds = getTotalOdds();
-
-  useEffect(() => {
-    if (selections.length > 0 && isAuthenticated) {
-      fetchAIRecommendation();
-    } else if (selections.length > 0 && !isAuthenticated) {
-      const winProbability = (1 / totalOdds) * 100;
-      setAiRecommendation({
-        probability: winProbability.toFixed(1),
-        confidence: winProbability > 20 ? 'High' : winProbability > 10 ? 'Medium' : 'Low',
-        message: winProbability > 20 
-          ? "🎯 Good value! Sign in for personalized insights based on your betting history." 
-          : winProbability > 10 
-          ? "📊 Moderate risk. Sign in to see how this compares to your past wins."
-          : "⚠️ High risk accumulator. Sign in for personalized stake recommendations.",
-        riskLevel: winProbability > 20 ? 'Low' : winProbability > 10 ? 'Medium' : 'High',
-        requiresAuth: true
-      });
-    } else {
-      setAiRecommendation(null);
-    }
-  }, [selections, isAuthenticated, totalOdds]);
-
-  const fetchAIRecommendation = async () => {
-    if (selections.length === 0) return;
-    
-    setLoadingAI(true);
-    try {
-      const response = await api.post('/ai/bet-slip-recommendation', {
-        selections: selections.map(s => ({
-          odds: s.selectedMarket.odds,
-          market: s.selectedMarket.name,
-          match: `${s.homeTeam?.name} vs ${s.awayTeam?.name}`
-        })),
-        totalOdds: totalOdds,
-        totalStake: totalStake
-      });
-      setAiRecommendation(response.data.data);
-    } catch (error) {
-      console.error('Error fetching AI recommendation:', error);
-      const winProbability = (1 / totalOdds) * 100;
-      setAiRecommendation({
-        probability: winProbability.toFixed(1),
-        confidence: winProbability > 20 ? 'High' : winProbability > 10 ? 'Medium' : 'Low',
-        message: winProbability > 20 
-          ? "🎯 Good value! This accumulator has a high probability of winning." 
-          : winProbability > 10 
-          ? "📊 Moderate risk. Consider hedging with smaller stake."
-          : "⚠️ High risk accumulator. Consider reducing selections.",
-        riskLevel: winProbability > 20 ? 'Low' : winProbability > 10 ? 'Medium' : 'High',
-        userInsight: null
-      });
-    } finally {
-      setLoadingAI(false);
-    }
-  };
-
-  const getRiskColor = (riskLevel) => {
-    switch(riskLevel) {
-      case 'Low': return 'text-green-400 bg-green-500/10 border-green-500/30';
-      case 'Medium': return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
-      case 'High': return 'text-red-400 bg-red-500/10 border-red-500/30';
-      default: return 'text-gray-400 bg-gray-500/10 border-gray-500/30';
-    }
-  };
-
-  const getRiskIcon = (riskLevel) => {
-    switch(riskLevel) {
-      case 'Low': return '🎯';
-      case 'Medium': return '📊';
-      case 'High': return '⚠️';
-      default: return '🤖';
-    }
-  };
 
   const handlePlaceBet = async () => {
     if (!isAuthenticated) {
@@ -205,54 +129,6 @@ export default function BetSlip() {
         </div>
       ) : (
         <>
-          {/* AI Recommendation Card */}
-          {loadingAI ? (
-            <div className="mb-4 p-3 rounded-lg border border-[#2a3042] bg-[#0f1219] animate-pulse">
-              <div className="flex items-center space-x-2">
-                <FiCpu className="text-gray-500" size={16} />
-                <div className="h-4 bg-gray-700 rounded w-3/4"></div>
-              </div>
-            </div>
-          ) : aiRecommendation && (
-            <div className={`mb-4 p-3 rounded-lg border ${getRiskColor(aiRecommendation.riskLevel)}`}>
-              <div className="flex items-start space-x-2">
-                <FiCpu className="mt-0.5 flex-shrink-0" size={16} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
-                    <div className="flex items-center space-x-2 flex-wrap">
-                      <span className="text-xs font-semibold">
-                        AI Analysis • {aiRecommendation.confidence} Confidence
-                      </span>
-                      <span className="text-lg">{getRiskIcon(aiRecommendation.riskLevel)}</span>
-                    </div>
-                    {aiRecommendation.requiresAuth && !isAuthenticated && (
-                      <button
-                        onClick={() => navigate('/login')}
-                        className="text-xs flex items-center space-x-1 text-[#2e7d32] hover:underline"
-                      >
-                        <FiLock size={10} />
-                        <span>Sign in</span>
-                      </button>
-                    )}
-                  </div>
-                  <div className="text-xs mb-1">
-                    {aiRecommendation.message}
-                  </div>
-                  {aiRecommendation.userInsight && isAuthenticated && (
-                    <div className="text-xs mt-2 pt-2 border-t border-current border-opacity-20">
-                      <span className="opacity-75">📊 {aiRecommendation.userInsight}</span>
-                    </div>
-                  )}
-                  {aiRecommendation.suggestedStake && isAuthenticated && (
-                    <div className="text-xs mt-1 opacity-75">
-                      💡 Suggested stake: KSh {aiRecommendation.suggestedStake.toLocaleString()}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Selections List */}
           <div className="flex-1 overflow-y-auto min-h-0 mb-4 pr-1 space-y-3">
             {selections.map((selection) => (
