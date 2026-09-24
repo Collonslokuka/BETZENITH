@@ -143,7 +143,7 @@ const placeBetValidation = [
     .notEmpty().withMessage('Match ID is required'),
   
   body('marketIndex')
-    .isInt({ min: 0, max: 3 }).withMessage('Market index must be between 0 and 3')
+    .isInt({ min: 0, max: 50 }).withMessage('Invalid market index')
     .notEmpty().withMessage('Market index is required'),
   
   body('stake')
@@ -161,7 +161,7 @@ const placeMultiBetValidation = [
     .isMongoId().withMessage('Invalid match ID'),
   
   body('selections.*.marketIndex')
-    .isInt({ min: 0, max: 3 }).withMessage('Market index must be between 0 and 3'),
+    .isInt({ min: 0, max: 50 }).withMessage('Invalid market index'),
   
   body('stake')
     .isFloat({ min: 10, max: 1000000 }).withMessage('Stake must be between 10 and 1,000,000'),
