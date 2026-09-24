@@ -2,20 +2,30 @@
 const nodemailer = require('nodemailer');
 
 // Create transporter
+// NOTE: family: 4 forces IPv4 — Render free tier has no outbound IPv6,
+// so the default IPv6 resolution for smtp.gmail.com fails with ENETUNREACH.
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: process.env.EMAIL_PORT || 587,
+  port: Number(process.env.EMAIL_PORT) || 587,
   secure: process.env.EMAIL_SECURE === 'true',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  }
+  },
+  family: 4,
+  requireTLS: true,
+  tls: {
+    rejectUnauthorized: false,
+  },
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
 });
 
 // Verify transporter connection
 transporter.verify((error, success) => {
   if (error) {
-    console.log('❌ Email transporter error:', error);
+    console.log('❌ Email transporter error:', error.message);
   } else {
     console.log('✅ Email server is ready to send messages');
   }
@@ -26,9 +36,9 @@ exports.sendVerificationEmail = async (email, token) => {
   const verificationUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/verify-email?token=${token}`;
 
   const mailOptions = {
-    from: `"BETFUSION" <${process.env.EMAIL_FROM || 'noreply@betfusion.com'}>`,
+    from: `"BETZENITH" <${process.env.EMAIL_FROM || 'noreply@betzenith.app'}>`,
     to: email,
-    subject: 'Verify Your Email - BETFUSION',
+    subject: 'Verify Your Email - BETZENITH',
     html: `
       <!DOCTYPE html>
       <html>
@@ -87,16 +97,16 @@ exports.sendVerificationEmail = async (email, token) => {
       <body>
         <div class="container">
           <div class="header">
-            <h1>BET<span>FUSION</span></h1>
+            <h1>BET<span>ZENITH</span></h1>
           </div>
           <div class="content">
-            <h2>Welcome to BETFUSION! 🎉</h2>
+            <h2>Welcome to BETZENITH! 🎉</h2>
             <p>Thank you for registering. Please verify your email address by clicking the button below:</p>
             <a href="${verificationUrl}" class="button">VERIFY EMAIL</a>
             <p style="word-break: break-all; font-size: 12px; color: #9ca3af;">${verificationUrl}</p>
           </div>
           <div class="footer">
-            <p>© 2026 BETFUSION. All rights reserved.</p>
+            <p>© 2026 BETZENITH. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -109,7 +119,7 @@ exports.sendVerificationEmail = async (email, token) => {
     console.log(`✅ Verification email sent to ${email} (ID: ${info.messageId})`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Failed to send verification email:', error);
+    console.error('❌ Failed to send verification email:', error.message);
     throw error;
   }
 };
@@ -119,9 +129,9 @@ exports.sendPasswordResetEmail = async (email, token) => {
   const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
 
   const mailOptions = {
-    from: `"BETFUSION" <${process.env.EMAIL_FROM || 'noreply@betfusion.com'}>`,
+    from: `"BETZENITH" <${process.env.EMAIL_FROM || 'noreply@betzenith.app'}>`,
     to: email,
-    subject: 'Reset Your Password - BETFUSION',
+    subject: 'Reset Your Password - BETZENITH',
     html: `
       <!DOCTYPE html>
       <html>
@@ -180,7 +190,7 @@ exports.sendPasswordResetEmail = async (email, token) => {
       <body>
         <div class="container">
           <div class="header">
-            <h1>BET<span>FUSION</span></h1>
+            <h1>BET<span>ZENITH</span></h1>
           </div>
           <div class="content">
             <h2>Reset Your Password 🔐</h2>
@@ -190,7 +200,7 @@ exports.sendPasswordResetEmail = async (email, token) => {
             <p style="color: #9ca3af; font-size: 14px;">This link will expire in 1 hour.</p>
           </div>
           <div class="footer">
-            <p>© 2026 BETFUSION. All rights reserved.</p>
+            <p>© 2026 BETZENITH. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -203,7 +213,7 @@ exports.sendPasswordResetEmail = async (email, token) => {
     console.log(`✅ Password reset email sent to ${email} (ID: ${info.messageId})`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Failed to send password reset email:', error);
+    console.error('❌ Failed to send password reset email:', error.message);
     throw error;
   }
 };
@@ -215,7 +225,7 @@ exports.testEmailConfig = async () => {
     console.log('✅ Email configuration is valid');
     return true;
   } catch (error) {
-    console.error('❌ Email configuration is invalid:', error);
+    console.error('❌ Email configuration is invalid:', error.message);
     return false;
   }
 };
