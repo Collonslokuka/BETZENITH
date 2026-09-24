@@ -204,10 +204,23 @@ router.put('/matches/:id', requireAdmin, async (req, res) => {
 
     if (status) match.status = status;
     if (minute !== undefined) match.minute = Number(minute);
+
+    // NEW: only allow rescheduling while the match is still SCHEDULED
     if (startsAt) {
-      const d = new Date(startsAt);
-      if (!isNaN(d.getTime())) { match.startsAt = d; match.date = d; }
+      if (match.status === 'SCHEDULED') {
+        const d = new Date(startsAt);
+        if (!isNaN(d.getTime())) {
+          match.startsAt = d;
+          match.date = d;
+        }
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot change start time — match has already kicked off',
+        });
+      }
     }
+
     if (homeTeam) match.homeTeam.name = homeTeam;
     if (awayTeam) match.awayTeam.name = awayTeam;
     if (league) match.league = league;
@@ -362,7 +375,7 @@ router.get('/predict/:slug', async (req, res) => {
           score: match.score,
           minute: match.minute,
           result: match.result,
-          markets: match.markets,   // NEW — full board for the prediction page
+          markets: match.markets,
         },
       },
     });
