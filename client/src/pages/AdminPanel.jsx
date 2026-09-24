@@ -6,14 +6,13 @@ import toast from 'react-hot-toast';
 const SPORTS = ['soccer', 'basketball', 'tennis', 'american-football', 'baseball', 'ice-hockey', 'cricket', 'mma'];
 const STATUSES = ['SCHEDULED', 'FIRST_HALF', 'HALFTIME', 'SECOND_HALF', 'FINISHED'];
 
-// Leagues dropdown — Club Friendly is a normal option
 const LEAGUES = [
+  'Club Friendly',
   'Premier League',
   'La Liga',
   'Serie A',
   'Bundesliga',
   'Ligue 1',
-  'Club Friendly',
   'UEFA Champions League',
   'UEFA Europa League',
   'NBA',
@@ -30,12 +29,29 @@ const LEAGUES = [
 
 const DEFAULT_ODDS = { home: '1.90', draw: '3.40', away: '3.80' };
 
-// NEW: turn a winner + margin pick into a concrete final score
 function scoreFromWinnerMargin(winner, margin) {
   const m = Math.max(0, Math.min(20, Math.floor(Number(margin) || 0)));
   if (winner === 'HOME') return { home: String(m), away: '0' };
   if (winner === 'AWAY') return { home: '0', away: String(m) };
-  return { home: String(m), away: String(m) }; // DRAW → same score both sides
+  return { home: String(m), away: String(m) };
+}
+
+function getOddsFromMarkets(match) {
+  const m = match.markets || [];
+  const find = (name) => m.find(x => x.name === name)?.odds;
+  const home = find('1') ?? find('Home') ?? '';
+  const draw = find('X') ?? '';
+  const away = find('2') ?? find('Away') ?? '';
+  return { home, draw, away };
+}
+
+// Convert a UTC ISO date to the local `YYYY-MM-DDTHH:MM` format the input expects
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function AdminPanel() {
@@ -45,18 +61,22 @@ export default function AdminPanel() {
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
 
-  const [form, setForm] = useState({
-    sport: 'soccer',
-    league: 'Premier League',
-    homeTeam: '',
-    awayTeam: '',
-    startsAt: new Date(Date.now() + 10 * 60 * 1000).toISOString().slice(0, 16),
-    // NEW: explicit winner + margin pick
-    winner: 'HOME',
-    margin: '1',
-    finalHomeScore: '1',
-    finalAwayScore: '0',
-    odds: { ...DEFAULT_ODDS },
+  const [form, setForm] = useState(() => {
+    const d = new Date(Date.now() + 10 * 60 * 1000);
+    const pad = n => String(n).padStart(2, '0');
+    const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return {
+      sport: 'soccer',
+      league: 'Club Friendly',
+      homeTeam: '',
+      awayTeam: '',
+      startsAt: local,
+      winner: 'HOME',
+      margin: '1',
+      finalHomeScore: '1',
+      finalAwayScore: '0',
+      odds: { ...DEFAULT_ODDS },
+    };
   });
 
   const [predForm, setPredForm] = useState({
@@ -68,16 +88,9 @@ export default function AdminPanel() {
 
   const authHeaders = { 'x-admin-token': token };
 
-  // NEW: apply winner + margin to the form
   const applyWinnerMargin = (winner, margin) => {
     const { home, away } = scoreFromWinnerMargin(winner, margin);
-    setForm(f => ({
-      ...f,
-      winner,
-      margin: String(margin),
-      finalHomeScore: home,
-      finalAwayScore: away,
-    }));
+    setForm(f => ({ ...f, winner, margin: String(margin), finalHomeScore: home, finalAwayScore: away }));
   };
 
   const login = async () => {
@@ -116,20 +129,21 @@ export default function AdminPanel() {
     if (form.odds.draw !== '') oddsPayload.draw = Number(form.odds.draw);
     if (form.odds.away !== '') oddsPayload.away = Number(form.odds.away);
 
+    // Interpret the picker as the admin's LOCAL time, then send UTC
+    const startsAtUTC = new Date(form.startsAt).toISOString();
+
     try {
-      await api.post('/admin-panel/matches', { ...form, odds: oddsPayload }, { headers: authHeaders });
+      await api.post(
+        '/admin-panel/matches',
+        { ...form, startsAt: startsAtUTC, odds: oddsPayload },
+        { headers: authHeaders }
+      );
       toast.success(`Match created in ${form.league} — ${form.finalHomeScore}-${form.finalAwayScore}`);
       loadMatches();
-      setForm({
-        ...form,
-        homeTeam: '',
-        awayTeam: '',
-        winner: 'HOME',
-        margin: '1',
-        finalHomeScore: '1',
-        finalAwayScore: '0',
-        odds: { ...DEFAULT_ODDS },
-      });
+      const d = new Date(Date.now() + 10 * 60 * 1000);
+      const pad = n => String(n).padStart(2, '0');
+      const next = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      setForm({ ...form, homeTeam: '', awayTeam: '', startsAt: next, winner: 'HOME', margin: '1', finalHomeScore: '1', finalAwayScore: '0', odds: { ...DEFAULT_ODDS } });
     } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }
   };
 
@@ -148,6 +162,19 @@ export default function AdminPanel() {
       }
       loadMatches();
     } catch (e) { toast.error('Failed'); }
+  };
+
+  // NEW: edit the start time of an existing match
+  const updateTime = async (match, localStartsAt) => {
+    if (!localStartsAt) return toast.error('Pick a time first');
+    const iso = new Date(localStartsAt).toISOString();
+    try {
+      await api.put(`/admin-panel/matches/${match._id}`, { startsAt: iso }, { headers: authHeaders });
+      toast.success('Start time updated');
+      loadMatches();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update time');
+    }
   };
 
   const updateOdds = async (match, odds) => {
@@ -256,142 +283,79 @@ export default function AdminPanel() {
 
         {tab === 'matches' && (
           <>
-            {/* Create form */}
+            {/* Create form (unchanged) */}
             <div className="bg-[#1a1f2e] rounded-xl p-6 border border-[#2a3042] mb-6">
               <h2 className="text-xl font-bold text-white mb-1">Create Match</h2>
               <p className="text-xs text-gray-500 mb-4">
-                Pick the winner and the margin, set the odds and start time. When the start time arrives, the match
+                Pick the winner and margin, set the odds and start time. When the start time arrives, the match
                 will kick off and play out to the result you set, then settle any bets at FINISHED.
               </p>
               <form onSubmit={createMatch} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white">
                   {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
-
-                <select
-                  value={form.league}
-                  onChange={e => setForm({ ...form, league: e.target.value })}
-                  className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white"
-                  required
-                >
+                <select value={form.league} onChange={e => setForm({ ...form, league: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required>
                   {LEAGUES.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
-
                 <input placeholder="Home Team" value={form.homeTeam} onChange={e => setForm({ ...form, homeTeam: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
                 <input placeholder="Away Team" value={form.awayTeam} onChange={e => setForm({ ...form, awayTeam: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" required />
                 <input type="datetime-local" value={form.startsAt} onChange={e => setForm({ ...form, startsAt: e.target.value })} className="px-4 py-2 bg-[#2a2f3f] rounded-lg text-white md:col-span-2" required />
 
-                {/* NEW: Winner + Margin picker */}
                 <div className="md:col-span-2 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div className="text-xs text-gray-400 mb-2 font-medium">Result — Winner &amp; Margin</div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="sm:col-span-2">
                       <label className="text-[11px] text-gray-500 block mb-1">Winner</label>
                       <div className="flex gap-1">
-                        {[
-                          { key: 'HOME', label: 'Home' },
-                          { key: 'DRAW', label: 'Draw' },
-                          { key: 'AWAY', label: 'Away' },
-                        ].map(w => (
-                          <button
-                            key={w.key}
-                            type="button"
-                            onClick={() => applyWinnerMargin(w.key, form.margin)}
-                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                              form.winner === w.key
-                                ? 'bg-[#2e7d32] text-white'
-                                : 'bg-[#2a2f3f] text-gray-400 hover:text-white'
-                            }`}
-                          >
+                        {[{ key: 'HOME', label: 'Home' }, { key: 'DRAW', label: 'Draw' }, { key: 'AWAY', label: 'Away' }].map(w => (
+                          <button key={w.key} type="button" onClick={() => applyWinnerMargin(w.key, form.margin)}
+                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${form.winner === w.key ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-400 hover:text-white'}`}>
                             {w.label}
                           </button>
                         ))}
                       </div>
                     </div>
                     <div>
-                      <label className="text-[11px] text-gray-500 block mb-1">
-                        {form.winner === 'DRAW' ? 'Score each side' : 'Margin'}
-                      </label>
-                      <input
-                        type="number" min="0" max="20"
-                        value={form.margin}
-                        onChange={e => applyWinnerMargin(form.winner, e.target.value)}
-                        className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm"
-                      />
+                      <label className="text-[11px] text-gray-500 block mb-1">{form.winner === 'DRAW' ? 'Score each side' : 'Margin'}</label>
+                      <input type="number" min="0" max="20" value={form.margin} onChange={e => applyWinnerMargin(form.winner, e.target.value)} className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm" />
                     </div>
                   </div>
                   <div className="mt-2 text-[11px] text-gray-400">
-                    Final score preview:{' '}
-                    <span className="text-white font-mono">
-                      {form.finalHomeScore || '0'} - {form.finalAwayScore || '0'}
-                    </span>
+                    Final score preview: <span className="text-white font-mono">{form.finalHomeScore || '0'} - {form.finalAwayScore || '0'}</span>
                   </div>
                 </div>
 
-                {/* Odds */}
                 <div className="md:col-span-2 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div className="text-xs text-gray-400 mb-2 font-medium">Odds (decimal)</div>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-[11px] text-gray-500 block mb-1">Home</label>
-                      <input
-                        type="number" step="0.01" min="1.01"
-                        value={form.odds.home}
-                        onChange={e => setForm({ ...form, odds: { ...form.odds, home: e.target.value } })}
-                        className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm"
-                      />
+                      <input type="number" step="0.01" min="1.01" value={form.odds.home} onChange={e => setForm({ ...form, odds: { ...form.odds, home: e.target.value } })} className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm" />
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500 block mb-1">Draw</label>
-                      <input
-                        type="number" step="0.01" min="1.01"
-                        value={form.odds.draw}
-                        onChange={e => setForm({ ...form, odds: { ...form.odds, draw: e.target.value } })}
-                        className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm"
-                      />
+                      <input type="number" step="0.01" min="1.01" value={form.odds.draw} onChange={e => setForm({ ...form, odds: { ...form.odds, draw: e.target.value } })} className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm" />
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500 block mb-1">Away</label>
-                      <input
-                        type="number" step="0.01" min="1.01"
-                        value={form.odds.away}
-                        onChange={e => setForm({ ...form, odds: { ...form.odds, away: e.target.value } })}
-                        className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm"
-                      />
+                      <input type="number" step="0.01" min="1.01" value={form.odds.away} onChange={e => setForm({ ...form, odds: { ...form.odds, away: e.target.value } })} className="w-full px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm" />
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, odds: { ...DEFAULT_ODDS } })}
-                    className="mt-2 text-[11px] text-gray-400 hover:text-white underline"
-                  >
+                  <button type="button" onClick={() => setForm({ ...form, odds: { ...DEFAULT_ODDS } })} className="mt-2 text-[11px] text-gray-400 hover:text-white underline">
                     Reset odds to defaults
                   </button>
                 </div>
 
-                {/* Manual score override (kept as a safety valve) */}
                 <div className="md:col-span-2 grid grid-cols-2 gap-4 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div>
                     <label className="text-xs text-gray-400 block mb-1">Final Home Score</label>
-                    <input
-                      type="number" min="0" max="20"
-                      value={form.finalHomeScore}
-                      onChange={e => setForm({ ...form, finalHomeScore: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white"
-                    />
+                    <input type="number" min="0" max="20" value={form.finalHomeScore} onChange={e => setForm({ ...form, finalHomeScore: e.target.value })} className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" />
                   </div>
                   <div>
                     <label className="text-xs text-gray-400 block mb-1">Final Away Score</label>
-                    <input
-                      type="number" min="0" max="20"
-                      value={form.finalAwayScore}
-                      onChange={e => setForm({ ...form, finalAwayScore: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white"
-                    />
+                    <input type="number" min="0" max="20" value={form.finalAwayScore} onChange={e => setForm({ ...form, finalAwayScore: e.target.value })} className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white" />
                   </div>
-                  <p className="col-span-2 text-[10px] text-gray-500">
-                    Auto-filled by the winner &amp; margin picker above — edit directly if you want a specific scoreline.
-                  </p>
+                  <p className="col-span-2 text-[10px] text-gray-500">Auto-filled by the winner &amp; margin picker above — edit directly if you want a specific scoreline.</p>
                 </div>
 
                 <button type="submit" className="px-6 py-2 bg-[#2e7d32] text-white rounded-lg font-bold md:col-span-2">Create Match</button>
@@ -407,6 +371,7 @@ export default function AdminPanel() {
                     key={m._id}
                     match={m}
                     onUpdate={updateScore}
+                    onUpdateTime={updateTime}          // NEW
                     onDelete={deleteMatch}
                     onPredict={(id) => setPredForm({ ...predForm, matchId: id })}
                     onSetTarget={setTarget}
@@ -462,28 +427,46 @@ export default function AdminPanel() {
   );
 }
 
-function MatchRow({ match, onUpdate, onDelete, onPredict, onSetTarget, onCopyLink, onUpdateOdds }) {
+function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTarget, onCopyLink, onUpdateOdds }) {
   const [home, setHome] = useState(match.score.home);
   const [away, setAway] = useState(match.score.away);
   const [status, setStatus] = useState(match.status);
+  const [startsAt, setStartsAt] = useState(toLocalInput(match.startsAt));
 
+  // Sync when the parent reloads the list
+  useEffect(() => {
+    setStartsAt(toLocalInput(match.startsAt));
+  }, [match.startsAt]);
+
+  const initial = getOddsFromMarkets(match);
   const [odds, setOdds] = useState({
-    home: match.odds?.home ?? '',
-    draw: match.odds?.draw ?? '',
-    away: match.odds?.away ?? '',
+    home: initial.home !== '' ? String(initial.home) : '',
+    draw: initial.draw !== '' ? String(initial.draw) : '',
+    away: initial.away !== '' ? String(initial.away) : '',
   });
+
+  useEffect(() => {
+    const fresh = getOddsFromMarkets(match);
+    setOdds({
+      home: fresh.home !== '' ? String(fresh.home) : '',
+      draw: fresh.draw !== '' ? String(fresh.draw) : '',
+      away: fresh.away !== '' ? String(fresh.away) : '',
+    });
+  }, [match._id, match.markets?.[0]?.odds, match.markets?.[1]?.odds, match.markets?.[2]?.odds]);
 
   const isScripted = match.source === 'admin-manual' && match.scriptedOutcome?.homeScore !== null;
   const target = match.scriptedOutcome;
-
   const hasOdds = odds.home !== '' || odds.draw !== '' || odds.away !== '';
   const oddsDirty =
-    String(odds.home) !== String(match.odds?.home ?? '') ||
-    String(odds.draw) !== String(match.odds?.draw ?? '') ||
-    String(odds.away) !== String(match.odds?.away ?? '');
+    String(odds.home) !== String(initial.home ?? '') ||
+    String(odds.draw) !== String(initial.draw ?? '') ||
+    String(odds.away) !== String(initial.away ?? '');
+  const timeDirty = startsAt !== toLocalInput(match.startsAt);
 
   return (
     <div className="flex flex-col gap-3 p-3 bg-[#0f1219] rounded-lg">
+
+      {/* Row 1: teams + score + status + actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
         <div className="flex-1 text-sm min-w-0">
           <div className="text-white font-medium truncate flex items-center gap-2 flex-wrap">
@@ -514,37 +497,39 @@ function MatchRow({ match, onUpdate, onDelete, onPredict, onSetTarget, onCopyLin
         </div>
       </div>
 
+      {/* Row 2: odds editor */}
       <div className="flex flex-wrap items-center gap-2 pl-1">
         <span className="text-[11px] text-gray-500 uppercase tracking-wide">Odds</span>
-        <input
-          type="number" step="0.01" min="1.01" placeholder="1"
-          value={odds.home}
-          onChange={e => setOdds({ ...odds, home: e.target.value })}
-          className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs"
-          title="Home odds"
-        />
-        <input
-          type="number" step="0.01" min="1.01" placeholder="X"
-          value={odds.draw}
-          onChange={e => setOdds({ ...odds, draw: e.target.value })}
-          className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs"
-          title="Draw odds"
-        />
-        <input
-          type="number" step="0.01" min="1.01" placeholder="2"
-          value={odds.away}
-          onChange={e => setOdds({ ...odds, away: e.target.value })}
-          className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs"
-          title="Away odds"
-        />
-        <button
-          onClick={() => onUpdateOdds(match, odds)}
-          disabled={!oddsDirty}
-          className={`px-2 py-1 text-xs rounded ${oddsDirty ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'}`}
-        >
+        <input type="number" step="0.01" min="1.01" placeholder="1" value={odds.home} onChange={e => setOdds({ ...odds, home: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" title="Home odds" />
+        <input type="number" step="0.01" min="1.01" placeholder="X" value={odds.draw} onChange={e => setOdds({ ...odds, draw: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" title="Draw odds" />
+        <input type="number" step="0.01" min="1.01" placeholder="2" value={odds.away} onChange={e => setOdds({ ...odds, away: e.target.value })} className="w-16 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" title="Away odds" />
+        <button onClick={() => onUpdateOdds(match, odds)} disabled={!oddsDirty}
+          className={`px-2 py-1 text-xs rounded ${oddsDirty ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'}`}>
           Save Odds
         </button>
         {!hasOdds && <span className="text-[10px] text-gray-600">no odds set</span>}
+      </div>
+
+      {/* Row 3: NEW — start time editor */}
+      <div className="flex flex-wrap items-center gap-2 pl-1">
+        <span className="text-[11px] text-gray-500 uppercase tracking-wide">Start time</span>
+        <input
+          type="datetime-local"
+          value={startsAt}
+          onChange={e => setStartsAt(e.target.value)}
+          className="px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs"
+          title="Match kickoff time"
+        />
+        <button
+          onClick={() => onUpdateTime(match, startsAt)}
+          disabled={!timeDirty}
+          className={`px-2 py-1 text-xs rounded ${timeDirty ? 'bg-[#2e7d32] text-white' : 'bg-[#2a2f3f] text-gray-500 cursor-not-allowed'}`}
+        >
+          Save Time
+        </button>
+        <span className="text-[10px] text-gray-600">
+          {match.status === 'SCHEDULED' ? 'Editable until kickoff' : `Locked — match is ${match.status}`}
+        </span>
       </div>
     </div>
   );
