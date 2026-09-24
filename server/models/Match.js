@@ -59,17 +59,52 @@ const marketSchema = new mongoose.Schema({
       // Tennis
       'Straight Sets',
 
-      // Combination markets (NEW)
+      // Combination markets (1X2 & Total 2.5)
       '1 & Over 2.5', '1 & Under 2.5',
       'X & Over 2.5', 'X & Under 2.5',
       '2 & Over 2.5', '2 & Under 2.5',
 
-      // Correct Score (NEW)
+      // Correct Score (full time)
       '0:0', '0:1', '0:2', '0:3', '0:4',
       '1:0', '1:1', '1:2', '1:3', '1:4',
       '2:0', '2:1', '2:2', '2:3', '2:4',
       '3:0', '3:1', '3:2', '3:3', '3:4',
       '4:0', '4:1', '4:2', '4:3', '4:4',
+
+      // ── NEW ──
+      // Additional totals lines
+      'Under 0.5', 'Under 1.5', 'Over 3.5', 'Under 3.5',
+      'Over 4.5', 'Under 4.5',
+
+      // 1X2 & BTTS combos
+      '1 & BTTS', '1 & BTTS No',
+      'X & BTTS', 'X & BTTS No',
+      '2 & BTTS', '2 & BTTS No',
+
+      // Correct Score "Other" bucket
+      'Other',
+
+      // Halftime/Fulltime
+      '1/1', '1/X', '1/2',
+      'X/1', 'X/X', 'X/2',
+      '2/1', '2/X', '2/2',
+
+      // 1st Half — 1X2
+      '1H 1', '1H X', '1H 2',
+
+      // 1st Half — Totals
+      '1H Over 0.5', '1H Under 0.5',
+      '1H Over 1.5', '1H Under 1.5',
+      '1H Over 2.5', '1H Under 2.5',
+
+      // 1st Half — BTTS
+      '1H BTTS', '1H BTTS No',
+
+      // 1st Half — Correct Score
+      '1H 0:0', '1H 0:1', '1H 0:2',
+      '1H 1:0', '1H 1:1', '1H 1:2',
+      '1H 2:0', '1H 2:1', '1H 2:2',
+      '1H Other',
     ],
   },
   odds: {
@@ -133,14 +168,12 @@ const liveStatsSchema = new mongoose.Schema({
 // ============================================================
 const matchSchema = new mongoose.Schema(
   {
-    // League Information
     league: { type: String, required: true, index: true },
     leagueId: { type: mongoose.Schema.Types.ObjectId, ref: 'League' },
     season: String,
     round: String,
     sport: { type: String, default: 'soccer', index: true },
 
-    // Team Information
     homeTeam: {
       _id: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
       name: { type: String, required: true },
@@ -160,14 +193,12 @@ const matchSchema = new mongoose.Schema(
       coach: String,
     },
 
-    // Match Details
     date: { type: Date, required: true, index: true },
     time: String,
     venue: String,
     startsAt: { type: Date, index: true },
     matchDuration: { type: Number, default: 90 },
 
-    // Score & Status
     score: {
       home: { type: Number, default: 0 },
       away: { type: Number, default: 0 },
@@ -175,18 +206,9 @@ const matchSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        'SCHEDULED',
-        'LIVE',
-        'FIRST_HALF',
-        'HALFTIME',
-        'SECOND_HALF',
-        'EXTRA_TIME',
-        'PENALTIES',
-        'FINISHED',
-        'CANCELLED',
-        'POSTPONED',
-        'ABANDONED',
-        'SUSPENDED',
+        'SCHEDULED', 'LIVE', 'FIRST_HALF', 'HALFTIME', 'SECOND_HALF',
+        'EXTRA_TIME', 'PENALTIES', 'FINISHED', 'CANCELLED',
+        'POSTPONED', 'ABANDONED', 'SUSPENDED',
       ],
       default: 'SCHEDULED',
       index: true,
@@ -194,7 +216,6 @@ const matchSchema = new mongoose.Schema(
     minute: { type: Number, default: 0 },
     addedTime: Number,
 
-    // Events
     events: [
       {
         type: {
@@ -213,27 +234,20 @@ const matchSchema = new mongoose.Schema(
       },
     ],
 
-    // Markets
     markets: [marketSchema],
-
-    // Live Stats
     liveStats: liveStatsSchema,
 
-    // Betting Information
     cashoutEnabled: { type: Boolean, default: true },
     liveBettingEnabled: { type: Boolean, default: true },
 
-    // Streaming
     streamingUrl: String,
     hasLiveStream: { type: Boolean, default: false },
     streamProviders: [String],
 
-    // Statistics
     views: { type: Number, default: 0 },
     betCount: { type: Number, default: 0 },
     totalVolume: { type: Number, default: 0 },
 
-    // Result (for settled matches)
     result: {
       winner: { type: String, enum: ['HOME', 'AWAY', 'DRAW'] },
       isSettled: { type: Boolean, default: false },
@@ -241,7 +255,6 @@ const matchSchema = new mongoose.Schema(
       settledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     },
 
-    // Metadata
     externalId: String,
     source: String,
     scriptedOutcome: {
@@ -251,40 +264,23 @@ const matchSchema = new mongoose.Schema(
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// ============================================================
-//  INDEXES
-// ============================================================
 matchSchema.index({ date: 1, status: 1 });
 matchSchema.index({ 'homeTeam.name': 'text', 'awayTeam.name': 'text', league: 'text' });
 matchSchema.index({ status: 1, date: 1 });
 matchSchema.index({ league: 1, status: 1 });
 matchSchema.index({ status: 1, startsAt: 1 });
 
-// ============================================================
-//  PRE-SAVE HOOKS
-// ============================================================
 matchSchema.pre('save', function (next) {
   this.updatedAt = new Date();
-
   if (this.isModified('status')) {
     if (!this.statusTimeline) this.statusTimeline = [];
-    this.statusTimeline.push({
-      status: this.status,
-      timestamp: new Date(),
-    });
+    this.statusTimeline.push({ status: this.status, timestamp: new Date() });
   }
-
   next();
 });
-
-// ============================================================
-//  BETTING CLOSURE LOGIC
-// ============================================================
 
 matchSchema.methods.isBettingAvailable = function () {
   if (CLOSED_STATUSES.includes(this.status)) return false;
@@ -294,70 +290,38 @@ matchSchema.methods.isBettingAvailable = function () {
   const cutoff = BETTING_CLOSE_MINUTES[sport] ?? 85;
   const minute = this.minute || 0;
 
-  if (
-    ['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) &&
-    minute >= cutoff
-  ) {
-    return false;
-  }
+  if (['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && minute >= cutoff) return false;
 
   const maxDuration = this.matchDuration || 90;
-  if (
-    ['LIVE', 'SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) &&
-    minute >= maxDuration
-  ) {
-    return false;
-  }
+  if (['LIVE', 'SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && minute >= maxDuration) return false;
 
   return true;
 };
 
 matchSchema.methods.getBettingClosedReason = function () {
   if (this.isBettingAvailable()) return null;
-
-  if (CLOSED_STATUSES.includes(this.status)) {
-    return `Match is ${this.status.toLowerCase()}`;
-  }
+  if (CLOSED_STATUSES.includes(this.status)) return `Match is ${this.status.toLowerCase()}`;
 
   const sport = (this.sport || 'soccer').toLowerCase();
   const cutoff = BETTING_CLOSE_MINUTES[sport] ?? 85;
 
-  if (
-    ['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) &&
-    (this.minute || 0) >= cutoff
-  ) {
+  if (['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && (this.minute || 0) >= cutoff) {
     return `Betting closed — match is in its final stages (${this.minute}')`;
   }
-
   return 'Betting is not available';
 };
 
-matchSchema.virtual('bettingOpen').get(function () {
-  return this.isBettingAvailable();
-});
-
+matchSchema.virtual('bettingOpen').get(function () { return this.isBettingAvailable(); });
 matchSchema.set('toJSON', { virtuals: true });
 matchSchema.set('toObject', { virtuals: true });
 
-// ============================================================
-//  METHODS
-// ============================================================
-
 matchSchema.methods.updateOdds = async function (marketIndex, newOdds, reason = 'admin') {
-  if (this.status === 'FINISHED') {
-    throw new Error('Cannot update odds for finished match');
-  }
-
+  if (this.status === 'FINISHED') throw new Error('Cannot update odds for finished match');
   const market = this.markets[marketIndex];
   if (!market) throw new Error('Market not found');
 
   if (!market.oddsHistory) market.oddsHistory = [];
-  market.oddsHistory.push({
-    odds: market.odds,
-    timestamp: new Date(),
-    reason,
-  });
-
+  market.oddsHistory.push({ odds: market.odds, timestamp: new Date(), reason });
   market.previousOdds = market.odds;
   market.odds = newOdds;
 
@@ -367,19 +331,15 @@ matchSchema.methods.updateOdds = async function (marketIndex, newOdds, reason = 
 
 matchSchema.methods.addEvent = async function (eventData) {
   if (!this.events) this.events = [];
-
   if (eventData.type === 'GOAL') {
     if (eventData.team === 'home') {
       this.score.home += 1;
-      eventData.homeScore = this.score.home;
-      eventData.awayScore = this.score.away;
     } else {
       this.score.away += 1;
-      eventData.homeScore = this.score.home;
-      eventData.awayScore = this.score.away;
     }
+    eventData.homeScore = this.score.home;
+    eventData.awayScore = this.score.away;
   }
-
   this.events.push(eventData);
   await this.save();
   return eventData;
@@ -399,9 +359,7 @@ matchSchema.methods.getAvailableMarkets = function () {
 
 matchSchema.virtual('volumeByMarket').get(function () {
   const volumes = {};
-  this.markets.forEach((market) => {
-    volumes[market.name] = market.volume;
-  });
+  (this.markets || []).forEach((market) => { volumes[market.name] = market.volume; });
   return volumes;
 });
 
