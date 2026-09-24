@@ -138,7 +138,7 @@ export default function MyBets() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-[#1a1f2e] rounded-lg p-3 border border-[#2a3042]">
             <p className="text-gray-400 text-xs">Total Bets</p>
             <p className="text-lg sm:text-2xl font-bold text-white">{stats.totalBets}</p>
@@ -154,12 +154,6 @@ export default function MyBets() {
             <p className="text-gray-400 text-xs">Total Stake</p>
             <p className="text-lg sm:text-2xl font-bold text-white truncate">
               KSh {stats.totalStake.toLocaleString()}
-            </p>
-          </div>
-          <div className="bg-[#1a1f2e] rounded-lg p-3 border border-[#2a3042]">
-            <p className="text-gray-400 text-xs">Profit/Loss</p>
-            <p className={`text-lg sm:text-2xl font-bold truncate ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              KSh {stats.profit.toLocaleString()}
             </p>
           </div>
         </div>
@@ -215,7 +209,6 @@ export default function MyBets() {
                 ? format(new Date(bet.createdAt), 'MMM d')
                 : '';
 
-              // Support both formats: single match bet OR multi-selection bet
               const selections = bet.selections || [];
               const isMulti = selections.length > 1;
               const firstMatch = selections[0]?.match || bet.match || {};
@@ -255,7 +248,6 @@ export default function MyBets() {
                     <span className="text-gray-500 text-lg">›</span>
                   </div>
 
-                  {/* Cashout row if available */}
                   {bet.cashoutAvailable && !bet.cashoutTaken && bet.status === 'PENDING' && (
                     <div className="mt-3 pt-3 border-t border-[#2a3042] flex items-center justify-between">
                       <div className="flex items-center space-x-2">
