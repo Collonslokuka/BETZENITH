@@ -70,6 +70,8 @@ class AIMatchService {
     this.liveTimer = null;
     this.rotationTimer = null;
     this.isRunning = false;
+    this.tickInProgress = false;      // NEW: prevents overlapping ticks
+    this.rotateInProgress = false;    // NEW: prevents overlapping rotates
   }
 
   start() {
@@ -110,6 +112,11 @@ class AIMatchService {
   // ============================================================
 
   async tick() {
+    // NEW: bail out if the previous tick is still running.
+    // Prevents two loops from saving the same match (Mongoose version conflicts).
+    if (this.tickInProgress) return;
+    this.tickInProgress = true;
+
     try {
       await this.promoteScheduledToLive();
       await this.updateLiveMatches();
@@ -118,10 +125,15 @@ class AIMatchService {
       console.log('✅ tick complete');
     } catch (err) {
       console.error('❌ tick error:', err.message);
+    } finally {
+      this.tickInProgress = false;
     }
   }
 
   async rotate() {
+    if (this.rotateInProgress) return;
+    this.rotateInProgress = true;
+
     try {
       await this.archiveOldFinished();
 
@@ -134,6 +146,8 @@ class AIMatchService {
       console.log('✅ rotation complete');
     } catch (err) {
       console.error('❌ rotate error:', err.message);
+    } finally {
+      this.rotateInProgress = false;
     }
   }
 
@@ -184,10 +198,8 @@ class AIMatchService {
         const targetHome = match.scriptedOutcome.homeScore || 0;
         const targetAway = match.scriptedOutcome.awayScore || 0;
 
-        // Deterministic goal schedule so the match plays out realistically
         const schedule = goalScheduleForMatch(match._id, targetHome, targetAway);
 
-        // Apply only goals whose minute has passed
         let h = 0, a = 0;
         for (const g of schedule) {
           if (g.minute <= newMinute) {
@@ -196,7 +208,6 @@ class AIMatchService {
           }
         }
 
-        // Log any new goals that just happened
         if (h !== (match.score.home || 0)) {
           match.events = match.events || [];
           match.events.push({
@@ -218,7 +229,6 @@ class AIMatchService {
         match.lastUpdated = new Date();
         await match.save();
 
-        // NEW: push live update to subscribers
         const io = global.io;
         if (io) {
           io.to(`match-${match._id}`).emit('match-update', {
@@ -230,7 +240,7 @@ class AIMatchService {
             lastUpdated: match.lastUpdated,
           });
         }
-        continue; // skip random goal simulation for this match
+        continue;
       }
       // ── END SCRIPTED OUTCOME ──
 
@@ -279,7 +289,6 @@ class AIMatchService {
       match.lastUpdated = new Date();
       await match.save();
 
-      // NEW: push live update to subscribers
       const io = global.io;
       if (io) {
         io.to(`match-${match._id}`).emit('match-update', {
@@ -332,17 +341,15 @@ class AIMatchService {
         const io = global.io;
         if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
 
-        // NEW: settle bets for this match
+        // NEW: settle bets using the real settler (same one the admin panel uses)
         try {
-          const settleMod = require('./settlement');
-          const settle = settleMod.settleMatch || settleMod.settle || settleMod.default;
-          if (typeof settle === 'function') {
-            await settle(match._id);
+          const { settleBetsForMatch } = require('./betSettlementService');
+          const result = await settleBetsForMatch(match._id, match, global.io);
+          if (result?.settled > 0) {
+            console.log(`💰 Settled ${result.settled} bets for match ${match._id} (won ${result.won}, lost ${result.lost})`);
           }
         } catch (err) {
-          if (err.code !== 'MODULE_NOT_FOUND') {
-            console.error('[ai-sim] settle failed for', match._id, err.message);
-          }
+          console.error('[ai-sim] settle failed for', match._id, err.message);
         }
       }
     }
