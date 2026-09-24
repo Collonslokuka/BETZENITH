@@ -20,6 +20,7 @@ import BetHistory from './pages/BetHistory';
 import BetSlipPage from './pages/BetSlipPage';
 import Favorites from './pages/Favorites';
 import MyBets from './pages/MyBets';
+import BetDetail from './pages/BetDetail';
 import Analytics from './pages/Analytics';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
@@ -37,7 +38,6 @@ import {
 } from 'react-icons/gi';
 import { FiStar, FiBarChart2, FiTrendingUp, FiShield } from 'react-icons/fi';
 
-// ─── Balance sync (unchanged) ───
 const BalanceSync = ({ children }) => {
   const { user, setUser } = useAuth();
 
@@ -83,7 +83,6 @@ const BalanceSync = ({ children }) => {
   return children;
 };
 
-// ─── All routing content lives in here so it can use useNavigate ───
 function AppContent({
   theme,
   topLeagues,
@@ -94,7 +93,6 @@ function AppContent({
 }) {
   const navigate = useNavigate();
 
-  // NEW: actually navigate instead of console.log
   const handleLeagueClick = (leagueName) => {
     if (!leagueName) return;
     navigate(`/league/${encodeURIComponent(leagueName)}`);
@@ -141,6 +139,7 @@ function AppContent({
                   <Route path="/bet-slip" element={<BetSlipPage />} />
                   <Route path="/favorites" element={<Favorites />} />
                   <Route path="/my-bets" element={<MyBets />} />
+                  <Route path="/bet/:id" element={<BetDetail />} />
                   <Route path="/wallet" element={<Wallet />} />
                   <Route path="/analytics" element={<Analytics />} />
                   <Route path="/terms" element={<Terms />} />
@@ -164,7 +163,6 @@ function AppContent({
   );
 }
 
-// ─── App shell: state + data + Router ───
 function App() {
   const [openAllSports, setOpenAllSports] = useState({});
   const [isMobile, setIsMobile] = useState(false);
@@ -194,11 +192,10 @@ function App() {
     setOpenAllSports(prev => ({ ...prev, [sportName]: !prev[sportName] }));
   };
 
-  // ─── Top Leagues — Club Friendly added at the top ───
   const topLeagues = [
     {
       name: 'Club Friendly',
-      count: 0, // actual count comes from the LeaguePage once it loads
+      count: 0,
       icon: <span className="text-lg">⚽</span>
     },
     {
@@ -238,7 +235,6 @@ function App() {
     },
   ];
 
-  // ─── All Sports (unchanged) ───
   const allSportsWithLeagues = [
     {
       name: 'Football',
@@ -255,7 +251,6 @@ function App() {
         { name: 'Championship', logo: <img src="https://media.api-sports.io/football/leagues/40.png" alt="Championship" className="w-4 h-4 object-contain" /> }
       ]
     },
-    // ...unchanged for the other sports
     {
       name: 'Basketball',
       icon: <GiBasketballBall className="text-[#2e7d32]" />,
