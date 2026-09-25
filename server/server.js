@@ -350,6 +350,10 @@ app.use('/api/admin-panel', require('./routes/adminPanel'));
 const aiMatchService = require('./services/aiMatchService');
 aiMatchService.start();
 
+// Start the Bet Settlement Scheduler
+const betSettlementScheduler = require('./services/betSettlementScheduler');
+betSettlementScheduler.start();
+
 // ============ DEBUG ROUTES ============
 app.get('/debug-routes', (req, res) => {
   try {

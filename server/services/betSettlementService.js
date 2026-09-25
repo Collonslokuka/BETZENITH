@@ -26,26 +26,21 @@ function evaluateMarket(name, ctx) {
   const { ftHome, ftAway, ftWinner, ftTotal, ftBtts,
           htHome, htAway, htWinner, htTotal, htBtts } = ctx;
 
-  // 1X2 / Home-Away
   if (n === '1' || n === 'Home') return ftWinner === 'HOME' ? 'WON' : 'LOST';
   if (n === '2' || n === 'Away') return ftWinner === 'AWAY' ? 'WON' : 'LOST';
   if (n === 'X')                 return ftWinner === 'DRAW' ? 'WON' : 'LOST';
 
-  // Double chance
   if (n === 'Double Chance 1X') return (ftWinner === 'HOME' || ftWinner === 'DRAW') ? 'WON' : 'LOST';
   if (n === 'Double Chance 12') return (ftWinner === 'HOME' || ftWinner === 'AWAY') ? 'WON' : 'LOST';
   if (n === 'Double Chance X2') return (ftWinner === 'DRAW' || ftWinner === 'AWAY') ? 'WON' : 'LOST';
 
-  // Full-time totals
   let m;
   if ((m = n.match(/^Over\s+([\d.]+)$/)))  return ftTotal > Number(m[1]) ? 'WON' : 'LOST';
   if ((m = n.match(/^Under\s+([\d.]+)$/))) return ftTotal < Number(m[1]) ? 'WON' : 'LOST';
 
-  // BTTS
   if (n === 'BTTS')    return ftBtts ? 'WON' : 'LOST';
   if (n === 'BTTS No') return !ftBtts ? 'WON' : 'LOST';
 
-  // 1X2 & BTTS
   if ((m = n.match(/^([1X2]) & BTTS$/))) {
     const sideWon = (m[1] === '1' && ftWinner === 'HOME') || (m[1] === 'X' && ftWinner === 'DRAW') || (m[1] === '2' && ftWinner === 'AWAY');
     return sideWon && ftBtts ? 'WON' : 'LOST';
@@ -55,7 +50,6 @@ function evaluateMarket(name, ctx) {
     return sideWon && !ftBtts ? 'WON' : 'LOST';
   }
 
-  // 1X2 & Total
   if ((m = n.match(/^([1X2]) & (Over|Under)\s+([\d.]+)$/))) {
     const sideWon = (m[1] === '1' && ftWinner === 'HOME') || (m[1] === 'X' && ftWinner === 'DRAW') || (m[1] === '2' && ftWinner === 'AWAY');
     const line = Number(m[3]);
@@ -63,7 +57,6 @@ function evaluateMarket(name, ctx) {
     return sideWon && totalWon ? 'WON' : 'LOST';
   }
 
-  // Correct score (FT)
   if (/^\d+:\d+$/.test(n)) {
     const [h, a] = n.split(':').map(Number);
     return (h === ftHome && a === ftAway) ? 'WON' : 'LOST';
@@ -74,14 +67,12 @@ function evaluateMarket(name, ctx) {
     return listed.has(`${ftHome}:${ftAway}`) ? 'LOST' : 'WON';
   }
 
-  // Halftime/Fulltime
   if ((m = n.match(/^([1X2])\/([1X2])$/))) {
     const htWon = (m[1] === '1' && htWinner === 'HOME') || (m[1] === 'X' && htWinner === 'DRAW') || (m[1] === '2' && htWinner === 'AWAY');
     const ftWon = (m[2] === '1' && ftWinner === 'HOME') || (m[2] === 'X' && ftWinner === 'DRAW') || (m[2] === '2' && ftWinner === 'AWAY');
     return htWon && ftWon ? 'WON' : 'LOST';
   }
 
-  // 1st Half markets
   if (n === '1H 1') return htWinner === 'HOME' ? 'WON' : 'LOST';
   if (n === '1H X') return htWinner === 'DRAW' ? 'WON' : 'LOST';
   if (n === '1H 2') return htWinner === 'AWAY' ? 'WON' : 'LOST';
@@ -101,7 +92,6 @@ function evaluateMarket(name, ctx) {
     return listed.has(`${htHome}:${htAway}`) ? 'LOST' : 'WON';
   }
 
-  // Unknown market → VOID (refund)
   return 'VOID';
 }
 
@@ -109,7 +99,12 @@ function evaluateMarket(name, ctx) {
  * Settle all pending bets for a match.
  */
 async function settleBetsForMatch(matchId, match, io) {
-  const bets = await Bet.find({ match: matchId, status: 'PENDING' });
+  // CHANGED: query now matches the actual Bet model (selections[].match)
+  const bets = await Bet.find({
+    status: 'PENDING',
+    'selections.match': matchId
+  });
+
   if (bets.length === 0) {
     return { settled: 0, won: 0, lost: 0, voided: 0, totalPaid: 0 };
   }
@@ -131,14 +126,35 @@ async function settleBetsForMatch(matchId, match, io) {
   let won = 0, lost = 0, voided = 0, totalPaid = 0;
 
   for (const bet of bets) {
-    const name = bet.selection || bet.market;
-    const verdict = evaluateMarket(name, ctx);
-    bet.settledAt = new Date();
+    // Multi-selection support: judge each, mark overall status
+    const outcomes = [];
+    for (const sel of (bet.selections || [])) {
+      if (String(sel.match) !== String(matchId)) {
+        // Different match — leave for its own settlement pass
+        continue;
+      }
+      const name = sel.marketName || sel.selection || sel.market;
+      const verdict = evaluateMarket(name, ctx);
+      sel.status = verdict;
+      outcomes.push(verdict);
+    }
+
+    // If all selections in this bet have resolved, settle the bet
+    const allResolved = (bet.selections || []).every(s => s.status && s.status !== 'PENDING');
+    if (!allResolved) {
+      await bet.save();
+      continue;
+    }
+
+    const hasLost = (bet.selections || []).some(s => s.status === 'LOST');
+    const hasVoid = (bet.selections || []).some(s => s.status === 'VOID');
+    const allWon = !hasLost && !hasVoid;
 
     const user = await User.findById(bet.user);
+    bet.settledAt = new Date();
 
-    if (verdict === 'WON') {
-      const payout = bet.potentialWin || Number((bet.stake * bet.odds).toFixed(2));
+    if (allWon) {
+      const payout = bet.potentialWin || Number((bet.stake * bet.totalOdds).toFixed(2));
       bet.status = 'WON';
       bet.payout = payout;
 
@@ -156,8 +172,7 @@ async function settleBetsForMatch(matchId, match, io) {
       }
       totalPaid += payout;
       won++;
-
-    } else if (verdict === 'LOST') {
+    } else if (hasLost) {
       bet.status = 'LOST';
       bet.payout = 0;
       if (user && io) {
@@ -166,9 +181,7 @@ async function settleBetsForMatch(matchId, match, io) {
         });
       }
       lost++;
-
     } else {
-      // VOID — refund stake
       bet.status = 'VOID';
       bet.payout = bet.stake;
       if (user) {
@@ -177,9 +190,6 @@ async function settleBetsForMatch(matchId, match, io) {
         if (io) {
           io.to(`user-${user._id}`).emit('balance-update', {
             newBalance: user.balance, amount: bet.stake, type: 'bet-void',
-          });
-          io.to(`user-${user._id}`).emit('bet-settled', {
-            betId: bet._id, status: 'VOID', payout: bet.stake, newBalance: user.balance,
           });
         }
       }
