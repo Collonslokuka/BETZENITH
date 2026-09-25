@@ -3,8 +3,8 @@ const Match = require('../models/Match');
 const OddsApiService = require('./OddsApiService');
 const DataFeedService = require('./DataFeedService');
 const multiApiService = require('./multiApiService');
+const { buildMarkets } = require('../utils/marketBuilder');
 
-// Leagues covered by each source — used to prevent duplicates
 const ODDS_API_LEAGUES = new Set([
   'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
   'UEFA Champions League', 'UEFA Europa League', 'Eredivisie',
@@ -15,16 +15,6 @@ const SPORTMONKS_LEAGUES = new Set([
   'Scottish Premiership', 'Danish Superliga',
 ]);
 
-/**
- * FixturesCoordinator
- * Runs all real-fixture sources in priority order and returns a summary.
- *
- *   1. OddsApiService  (The Odds API)   — best coverage
- *   2. DataFeedService (Sportmonks)     — free tier: Scottish + Danish
- *   3. MultiApiService (TheSportsDB)    — free fallback
- *
- * Duplicates avoided by team name + start time (±30 min).
- */
 class FixturesCoordinator {
   constructor() {
     this.isRunning = false;
@@ -42,7 +32,6 @@ class FixturesCoordinator {
     const bySource = { 'odds-api': 0, sportmonks: 0, thesportsdb: 0 };
     const errors = [];
 
-    // ── Priority 1: The Odds API ──────────────────────────────
     try {
       const r = await OddsApiService.upsertMatchesFromApi();
       bySource['odds-api'] = r.created || 0;
@@ -52,7 +41,6 @@ class FixturesCoordinator {
       console.error('📡 OddsApi failed:', err.message);
     }
 
-    // ── Priority 2: Sportmonks ────────────────────────────────
     try {
       const fixtures = await DataFeedService.fetchTodaysFixtures();
       let created = 0;
@@ -66,7 +54,6 @@ class FixturesCoordinator {
       console.error('📡 Sportmonks failed:', err.message);
     }
 
-    // ── Priority 3: TheSportsDB ───────────────────────────────
     try {
       const events = await multiApiService.fetchUpcoming();
       let created = 0;
@@ -140,7 +127,6 @@ class FixturesCoordinator {
 
   async persistGenericFixture(ev) {
     try {
-      // Skip if league already covered by OddsApi
       if (ODDS_API_LEAGUES.has(ev.league)) return false;
 
       const dup = await Match.findOne({
@@ -185,31 +171,6 @@ function abbr(name) {
   return words.slice(0, 3).map((w) => w[0]).join('').toUpperCase();
 }
 
-function buildMarkets(sport) {
-  switch (sport) {
-    case 'soccer':
-      return [
-        { name: '1', odds: 2.10, isActive: true },
-        { name: 'X', odds: 3.40, isActive: true },
-        { name: '2', odds: 2.10, isActive: true },
-      ];
-    case 'basketball':
-      return [
-        { name: 'Home', odds: 1.95, isActive: true },
-        { name: 'Away', odds: 1.95, isActive: true },
-      ];
-    case 'tennis':
-      return [
-        { name: 'Home', odds: 1.85, isActive: true },
-        { name: 'Away', odds: 1.95, isActive: true },
-      ];
-    default:
-      return [
-        { name: '1', odds: 2.00, isActive: true },
-        { name: 'X', odds: 3.20, isActive: true },
-        { name: '2', odds: 2.00, isActive: true },
-      ];
-  }
-}
+// buildMarkets now comes from ../utils/marketBuilder
 
 module.exports = new FixturesCoordinator();

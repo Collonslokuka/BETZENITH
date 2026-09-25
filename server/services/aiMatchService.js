@@ -1,6 +1,7 @@
 // server/services/aiMatchService.js
 const Match = require('../models/Match');
 const FixturesCoordinator = require('./FixturesCoordinator');
+const { buildMarkets } = require('../utils/marketBuilder');
 const {
   LEAGUES,
   SPORT_DURATIONS,
@@ -13,13 +14,12 @@ const {
 // ============================================================
 //  CONFIG
 // ============================================================
-const LIVE_TICK_MS = 30 * 1000;                 // 30 seconds
-const ROTATION_TICK_MS = 60 * 60 * 1000;        // 1 hour
-const KEEP_FINISHED_HOURS = 48;                 // keep 2 days of finished
+const LIVE_TICK_MS = 30 * 1000;
+const ROTATION_TICK_MS = 60 * 60 * 1000;
+const KEEP_FINISHED_HOURS = 48;
 const MIN_PER_LEAGUE = 2;
-const PERSIST_BATCH_SIZE = 100;                 // insertMany batch size
+const PERSIST_BATCH_SIZE = 100;
 
-// Per-sport live targets (total = 90)
 const LIVE_PER_SPORT = {
   soccer: 35,
   basketball: 12,
@@ -31,7 +31,6 @@ const LIVE_PER_SPORT = {
   mma: 5,
 };
 
-// Per-sport upcoming targets (total = 1500)
 const UPCOMING_PER_SPORT = {
   soccer: 800,
   basketball: 180,
@@ -43,7 +42,6 @@ const UPCOMING_PER_SPORT = {
   mma: 80,
 };
 
-// Finished matches to seed on startup (total = 500)
 const SEED_FINISHED_PER_SPORT = {
   soccer: 250,
   basketball: 60,
@@ -55,8 +53,6 @@ const SEED_FINISHED_PER_SPORT = {
   mma: 25,
 };
 
-// How many game-minutes advance per 30s tick, per sport.
-// Every match should last roughly 22 real minutes.
 function minutesPerTick(sport) {
   const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
   return Math.max(1, Math.ceil(dur.regular / 45));
@@ -70,8 +66,8 @@ class AIMatchService {
     this.liveTimer = null;
     this.rotationTimer = null;
     this.isRunning = false;
-    this.tickInProgress = false;      // NEW: prevents overlapping ticks
-    this.rotateInProgress = false;    // NEW: prevents overlapping rotates
+    this.tickInProgress = false;
+    this.rotateInProgress = false;
   }
 
   start() {
@@ -79,16 +75,13 @@ class AIMatchService {
     this.isRunning = true;
     console.log('🤖 AI Match Service Started');
 
-    // 1. Seed finished matches (only if DB is empty of them)
     this.seedFinishedMatches().catch(err =>
       console.error('🏁 seed-finished error:', err.message)
     );
 
-    // 2. First run
     this.tick().catch(err => console.error('🤖 tick error:', err.message));
     this.rotate().catch(err => console.error('🤖 rotate error:', err.message));
 
-    // 3. Periodic
     this.liveTimer = setInterval(() => {
       this.tick().catch(err => console.error('🤖 tick error:', err.message));
     }, LIVE_TICK_MS);
@@ -107,13 +100,7 @@ class AIMatchService {
     console.log('🤖 AI Match Service Stopped');
   }
 
-  // ============================================================
-  //  MAIN TICKS
-  // ============================================================
-
   async tick() {
-    // NEW: bail out if the previous tick is still running.
-    // Prevents two loops from saving the same match (Mongoose version conflicts).
     if (this.tickInProgress) return;
     this.tickInProgress = true;
 
@@ -150,10 +137,6 @@ class AIMatchService {
       this.rotateInProgress = false;
     }
   }
-
-  // ============================================================
-  //  PROMOTE / UPDATE / FINISH
-  // ============================================================
 
   async promoteScheduledToLive() {
     const now = new Date();
@@ -313,7 +296,6 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
 
       if ((match.minute || 0) >= dur.regular) {
-        // Force scripted score if admin-created match had a target
         if (
           match.source === 'admin-manual' &&
           match.scriptedOutcome?.homeScore !== null &&
@@ -341,7 +323,6 @@ class AIMatchService {
         const io = global.io;
         if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
 
-        // NEW: settle bets using the real settler (same one the admin panel uses)
         try {
           const { settleBetsForMatch } = require('./betSettlementService');
           const result = await settleBetsForMatch(match._id, match, global.io);
@@ -365,10 +346,6 @@ class AIMatchService {
       console.log(`🗑️  Archived ${result.deletedCount} old finished matches`);
     }
   }
-
-  // ============================================================
-  //  SEED FINISHED (one-time on startup)
-  // ============================================================
 
   async seedFinishedMatches() {
     const total = await Match.countDocuments({ status: 'FINISHED' });
@@ -441,10 +418,6 @@ class AIMatchService {
     }
   }
 
-  // ============================================================
-  //  TOP-UPS (per sport)
-  // ============================================================
-
   async topUpLiveIfNeeded() {
     const counts = await Match.aggregate([
       { $match: { status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] } } },
@@ -498,10 +471,6 @@ class AIMatchService {
     }
     return covered;
   }
-
-  // ============================================================
-  //  GENERATORS (per sport)
-  // ============================================================
 
   async generateLiveBatch(count, sport) {
     const now = Date.now();
@@ -603,10 +572,6 @@ class AIMatchService {
     return created;
   }
 
-  // ============================================================
-  //  AI PREDICTION
-  // ============================================================
-
   async calculateAIPrediction(match) {
     const homeOdds = match.markets?.find(m => m.name === '1' || m.name === 'Home')?.odds || 2.0;
     const drawOdds = match.markets?.find(m => m.name === 'X')?.odds || 3.4;
@@ -634,70 +599,9 @@ class AIMatchService {
 // ============================================================
 //  HELPERS
 // ============================================================
-
-function buildMarkets(sport) {
-  switch (sport) {
-    case 'soccer':
-      return [
-        { name: '1', odds: +(1.4 + Math.random() * 2.6).toFixed(2), isActive: true },
-        { name: 'X', odds: +(3.0 + Math.random() * 1.3).toFixed(2), isActive: true },
-        { name: '2', odds: +(1.4 + Math.random() * 2.6).toFixed(2), isActive: true },
-        { name: 'Over 2.5', odds: +(1.75 + Math.random() * 0.5).toFixed(2), isActive: true },
-        { name: 'Under 2.5', odds: +(1.75 + Math.random() * 0.5).toFixed(2), isActive: true },
-        { name: 'BTTS', odds: +(1.7 + Math.random() * 0.6).toFixed(2), isActive: true },
-        { name: 'BTTS No', odds: +(1.7 + Math.random() * 0.6).toFixed(2), isActive: true },
-      ];
-    case 'basketball':
-      return [
-        { name: 'Home', odds: +(1.2 + Math.random() * 2.0).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.2 + Math.random() * 2.0).toFixed(2), isActive: true },
-        { name: 'Over 220.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 220.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    case 'american-football':
-      return [
-        { name: 'Home', odds: +(1.3 + Math.random() * 1.8).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.3 + Math.random() * 1.8).toFixed(2), isActive: true },
-        { name: 'Over 45.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 45.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    case 'baseball':
-      return [
-        { name: 'Home', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Over 8.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 8.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    case 'ice-hockey':
-      return [
-        { name: 'Home', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Over 5.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 5.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    case 'tennis':
-      return [
-        { name: 'Home', odds: +(1.2 + Math.random() * 2.2).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.2 + Math.random() * 2.2).toFixed(2), isActive: true },
-        { name: 'Straight Sets', odds: +(1.8 + Math.random() * 0.8).toFixed(2), isActive: true },
-      ];
-    case 'cricket':
-    case 'mma':
-      return [
-        { name: 'Home', odds: +(1.3 + Math.random() * 2.0).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.3 + Math.random() * 2.0).toFixed(2), isActive: true },
-      ];
-    default:
-      return [
-        { name: '1', odds: +(1.5 + Math.random() * 2.0).toFixed(2), isActive: true },
-        { name: 'X', odds: +(2.8 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: '2', odds: +(1.5 + Math.random() * 2.0).toFixed(2), isActive: true },
-      ];
-  }
-}
+// buildMarkets now comes from ../utils/marketBuilder
 
 function goalScheduleForMatch(matchId, targetHome, targetAway) {
-  // Deterministic pseudo-random goal minutes derived from the match ID
   const seed = String(matchId).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const goals = [];
   let counter = 0;

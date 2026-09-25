@@ -1,9 +1,6 @@
 // server/models/Match.js
 const mongoose = require('mongoose');
 
-// ============================================================
-//  BETTING CLOSURE CONFIGURATION
-// ============================================================
 const BETTING_CLOSE_MINUTES = {
   soccer: 85,
   basketball: 45,
@@ -28,123 +25,63 @@ const CLOSED_STATUSES = [
   'SUSPENDED',
 ];
 
-// ============================================================
-//  SUB-SCHEMAS
-// ============================================================
 const marketSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
     enum: [
-      // 1X2 (soccer)
       '1', 'X', '2',
-
-      // Moneyline (basketball, tennis, hockey, NFL, baseball, MMA, cricket)
       'Home', 'Away',
-
-      // Totals (all sports)
       'Over 0.5', 'Over 1.5', 'Over 2.5', 'Under 2.5',
       'Over 8.5', 'Under 8.5',
       'Over 5.5', 'Under 5.5',
       'Over 45.5', 'Under 45.5',
       'Over 210.5', 'Under 210.5',
       'Over 220.5', 'Under 220.5',
-
-      // Both teams to score (soccer)
       'BTTS', 'BTTS No',
-
-      // Double chance (soccer)
       'Double Chance 1X', 'Double Chance 12', 'Double Chance X2',
-
-      // Tennis
       'Straight Sets',
-
-      // Combination markets (1X2 & Total 2.5)
       '1 & Over 2.5', '1 & Under 2.5',
       'X & Over 2.5', 'X & Under 2.5',
       '2 & Over 2.5', '2 & Under 2.5',
-
-      // Correct Score (full time)
       '0:0', '0:1', '0:2', '0:3', '0:4',
       '1:0', '1:1', '1:2', '1:3', '1:4',
       '2:0', '2:1', '2:2', '2:3', '2:4',
       '3:0', '3:1', '3:2', '3:3', '3:4',
       '4:0', '4:1', '4:2', '4:3', '4:4',
-
-      // ── NEW ──
-      // Additional totals lines
       'Under 0.5', 'Under 1.5', 'Over 3.5', 'Under 3.5',
       'Over 4.5', 'Under 4.5',
-
-      // 1X2 & BTTS combos
       '1 & BTTS', '1 & BTTS No',
       'X & BTTS', 'X & BTTS No',
       '2 & BTTS', '2 & BTTS No',
-
-      // Correct Score "Other" bucket
       'Other',
-
-      // Halftime/Fulltime
       '1/1', '1/X', '1/2',
       'X/1', 'X/X', 'X/2',
       '2/1', '2/X', '2/2',
-
-      // 1st Half — 1X2
       '1H 1', '1H X', '1H 2',
-
-      // 1st Half — Totals
       '1H Over 0.5', '1H Under 0.5',
       '1H Over 1.5', '1H Under 1.5',
       '1H Over 2.5', '1H Under 2.5',
-
-      // 1st Half — BTTS
       '1H BTTS', '1H BTTS No',
-
-      // 1st Half — Correct Score
       '1H 0:0', '1H 0:1', '1H 0:2',
       '1H 1:0', '1H 1:1', '1H 1:2',
       '1H 2:0', '1H 2:1', '1H 2:2',
       '1H Other',
+      '1st Goal 1', '1st Goal 2', '1st Goal None',
+      'DNB 1', 'DNB 2',
     ],
   },
-  odds: {
-    type: Number,
-    required: true,
-    min: 1.01,
-    max: 1000,
-  },
+  odds: { type: Number, required: true, min: 1.01, max: 1000 },
   previousOdds: Number,
   oddsHistory: [
-    {
-      odds: Number,
-      timestamp: { type: Date, default: Date.now },
-      reason: String,
-    },
+    { odds: Number, timestamp: { type: Date, default: Date.now }, reason: String },
   ],
-  isActive: {
-    type: Boolean,
-    default: true,
-  },
-  volume: {
-    type: Number,
-    default: 0,
-  },
-  betsCount: {
-    type: Number,
-    default: 0,
-  },
-  minBet: {
-    type: Number,
-    default: 10,
-  },
-  maxBet: {
-    type: Number,
-    default: 1000000,
-  },
-  suspended: {
-    type: Boolean,
-    default: false,
-  },
+  isActive: { type: Boolean, default: true },
+  volume: { type: Number, default: 0 },
+  betsCount: { type: Number, default: 0 },
+  minBet: { type: Number, default: 10 },
+  maxBet: { type: Number, default: 1000000 },
+  suspended: { type: Boolean, default: false },
   handicap: Number,
   total: Number,
 });
@@ -163,9 +100,6 @@ const liveStatsSchema = new mongoose.Schema({
   updatedAt: Date,
 });
 
-// ============================================================
-//  MAIN MATCH SCHEMA
-// ============================================================
 const matchSchema = new mongoose.Schema(
   {
     league: { type: String, required: true, index: true },
