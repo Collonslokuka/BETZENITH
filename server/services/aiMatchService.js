@@ -209,6 +209,19 @@ class AIMatchService {
         }
 
         match.score = { home: h, away: a };
+
+        // ── NEW: random card during play ──
+        if (newMinute >= 1 && Math.random() < 0.06) {
+          const isRed = Math.random() < 0.05;
+          match.events = match.events || [];
+          match.events.push({
+            type: isRed ? 'RED_CARD' : 'YELLOW_CARD',
+            minute: newMinute,
+            team: Math.random() < 0.5 ? 'home' : 'away',
+            player: randomPlayerName(),
+          });
+        }
+
         match.lastUpdated = new Date();
         await match.save();
 
@@ -267,6 +280,18 @@ class AIMatchService {
             at: new Date(),
           });
         }
+      }
+
+      // ── NEW: random card during play (mock matches) ──
+      if (newMinute >= 1 && Math.random() < 0.06) {
+        const isRed = Math.random() < 0.05;
+        match.events = match.events || [];
+        match.events.push({
+          type: isRed ? 'RED_CARD' : 'YELLOW_CARD',
+          minute: newMinute,
+          team: Math.random() < 0.5 ? 'home' : 'away',
+          player: randomPlayerName(),
+        });
       }
 
       match.lastUpdated = new Date();
@@ -600,6 +625,19 @@ class AIMatchService {
 //  HELPERS
 // ============================================================
 // buildMarkets now comes from ../utils/marketBuilder
+
+// NEW: random player name for cards
+const FIRST_INITIALS = ['J.','M.','A.','K.','L.','R.','S.','T.','D.','B.','C.','N.','P.','E.','V.'];
+const LAST_NAMES = [
+  'Silva','Garcia','Müller','Rossi','Salah','Kane','Lopez','Martinez',
+  'Kovac','Novak','Petrov','Dembélé','Fernandes','Andersen','Costa',
+  'Ivanov','Yilmaz','Diallo','Nowak','Horvat',
+];
+function randomPlayerName() {
+  const f = FIRST_INITIALS[Math.floor(Math.random() * FIRST_INITIALS.length)];
+  const l = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+  return `${f} ${l}`;
+}
 
 function goalScheduleForMatch(matchId, targetHome, targetAway) {
   const seed = String(matchId).split('').reduce((a, c) => a + c.charCodeAt(0), 0);

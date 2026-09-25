@@ -67,6 +67,58 @@ function Section({ title, children }) {
   );
 }
 
+// ─── NEW: match events timeline ───
+function EventsTimeline({ events = [], match }) {
+  const visible = events.filter(e =>
+    ['GOAL', 'YELLOW_CARD', 'RED_CARD'].includes(e.type)
+  );
+
+  if (visible.length === 0) return null;
+
+  const sorted = [...visible].sort((a, b) => (b.minute || 0) - (a.minute || 0));
+
+  return (
+    <div className="bg-[#1a1f2e] rounded-lg p-4 sm:p-6 mb-4 border border-[#2a3042]">
+      <h2 className="text-lg sm:text-xl font-bold text-white mb-4">Match Events</h2>
+      <div className="space-y-2">
+        {sorted.map((ev, i) => {
+          const icon =
+            ev.type === 'GOAL' ? '⚽' :
+            ev.type === 'YELLOW_CARD' ? '🟨' :
+            ev.type === 'RED_CARD' ? '🟥' : '•';
+
+          const teamName =
+            ev.team === 'home' ? match.homeTeam.name :
+            ev.team === 'away' ? match.awayTeam.name : '';
+
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-3 text-sm bg-[#0f1219] rounded-lg px-3 py-2 border border-[#1f2535]"
+            >
+              <span className="text-xs text-gray-500 w-8 tabular-nums shrink-0">
+                {ev.minute != null ? `${ev.minute}'` : ''}
+              </span>
+              <span className="text-lg shrink-0">{icon}</span>
+              <span className="text-white flex-1 min-w-0 truncate">
+                {ev.player || teamName}
+              </span>
+              <span className="text-[10px] text-gray-500 uppercase shrink-0">
+                {ev.team || ''}
+              </span>
+              {ev.type === 'GOAL' && ev.homeScore != null && ev.awayScore != null && (
+                <span className="text-emerald-400 font-bold tabular-nums shrink-0">
+                  {ev.homeScore}-{ev.awayScore}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function MatchDetail() {
   const { id } = useParams();
   const [match, setMatch] = useState(null);
@@ -82,6 +134,17 @@ export default function MatchDetail() {
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [id]);
+
+  // NEW: auto-refresh while live so events stream in
+  useEffect(() => {
+    if (!match) return;
+    const live = ['FIRST_HALF', 'HALFTIME', 'SECOND_HALF', 'LIVE'].includes(match.status);
+    if (!live) return;
+    const t = setInterval(() => {
+      getMatch(id).then(data => setMatch(data)).catch(() => {});
+    }, 15000);
+    return () => clearInterval(t);
+  }, [match?.status, id]);
 
   const grouped = useMemo(() => groupMarkets(match?.markets), [match]);
 
@@ -165,6 +228,9 @@ export default function MatchDetail() {
             </div>
           </div>
         </div>
+
+        {/* ─── NEW: MATCH EVENTS ─── */}
+        <EventsTimeline events={match.events || []} match={match} />
 
         {/* ─── MARKETS ─── */}
         <div className="bg-[#1a1f2e] rounded-lg p-4 sm:p-6">
