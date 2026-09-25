@@ -34,6 +34,9 @@ function evaluateMarket(name, ctx) {
   if (n === 'Double Chance 12') return (ftWinner === 'HOME' || ftWinner === 'AWAY') ? 'WON' : 'LOST';
   if (n === 'Double Chance X2') return (ftWinner === 'DRAW' || ftWinner === 'AWAY') ? 'WON' : 'LOST';
 
+  if (n === 'DNB 1') return ftWinner === 'HOME' ? 'WON' : 'LOST';
+  if (n === 'DNB 2') return ftWinner === 'AWAY' ? 'WON' : 'LOST';
+
   let m;
   if ((m = n.match(/^Over\s+([\d.]+)$/)))  return ftTotal > Number(m[1]) ? 'WON' : 'LOST';
   if ((m = n.match(/^Under\s+([\d.]+)$/))) return ftTotal < Number(m[1]) ? 'WON' : 'LOST';
@@ -99,7 +102,6 @@ function evaluateMarket(name, ctx) {
  * Settle all pending bets for a match.
  */
 async function settleBetsForMatch(matchId, match, io) {
-  // CHANGED: query now matches the actual Bet model (selections[].match)
   const bets = await Bet.find({
     status: 'PENDING',
     'selections.match': matchId
@@ -126,20 +128,14 @@ async function settleBetsForMatch(matchId, match, io) {
   let won = 0, lost = 0, voided = 0, totalPaid = 0;
 
   for (const bet of bets) {
-    // Multi-selection support: judge each, mark overall status
-    const outcomes = [];
     for (const sel of (bet.selections || [])) {
-      if (String(sel.match) !== String(matchId)) {
-        // Different match — leave for its own settlement pass
-        continue;
-      }
+      if (String(sel.match) !== String(matchId)) continue;
       const name = sel.marketName || sel.selection || sel.market;
       const verdict = evaluateMarket(name, ctx);
       sel.status = verdict;
-      outcomes.push(verdict);
+      sel.settledAt = new Date();
     }
 
-    // If all selections in this bet have resolved, settle the bet
     const allResolved = (bet.selections || []).every(s => s.status && s.status !== 'PENDING');
     if (!allResolved) {
       await bet.save();
@@ -152,11 +148,15 @@ async function settleBetsForMatch(matchId, match, io) {
 
     const user = await User.findById(bet.user);
     bet.settledAt = new Date();
+    bet.cashoutAvailable = false;
 
     if (allWon) {
       const payout = bet.potentialWin || Number((bet.stake * bet.totalOdds).toFixed(2));
       bet.status = 'WON';
-      bet.payout = payout;
+      // FIXED: schema uses `winnings`, not `payout`
+      bet.winnings = payout;
+      bet.paidOut = true;
+      bet.paidOutAt = new Date();
 
       if (user) {
         user.balance = Number((user.balance + payout).toFixed(2));
@@ -172,24 +172,33 @@ async function settleBetsForMatch(matchId, match, io) {
       }
       totalPaid += payout;
       won++;
+
     } else if (hasLost) {
       bet.status = 'LOST';
-      bet.payout = 0;
+      // FIXED: schema uses `winnings`
+      bet.winnings = 0;
+
       if (user && io) {
         io.to(`user-${user._id}`).emit('bet-settled', {
           betId: bet._id, status: 'LOST', payout: 0,
         });
       }
       lost++;
+
     } else {
       bet.status = 'VOID';
-      bet.payout = bet.stake;
+      // FIXED: schema uses `winnings`; full stake refunded
+      bet.winnings = bet.stake;
+
       if (user) {
         user.balance = Number((user.balance + bet.stake).toFixed(2));
         await user.save();
         if (io) {
           io.to(`user-${user._id}`).emit('balance-update', {
             newBalance: user.balance, amount: bet.stake, type: 'bet-void',
+          });
+          io.to(`user-${user._id}`).emit('bet-settled', {
+            betId: bet._id, status: 'VOID', payout: bet.stake, newBalance: user.balance,
           });
         }
       }
