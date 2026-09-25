@@ -6,6 +6,82 @@ import toast from 'react-hot-toast';
 import { FiArrowLeft, FiXCircle, FiDollarSign, FiCopy, FiCalendar } from 'react-icons/fi';
 import { format } from 'date-fns';
 
+// Compute a clear outcome from the bet + its selections.
+// Mirrors the logic used in MyBets and BetHistory.
+function getOutcome(bet) {
+  const selections = bet.selections || [];
+  const won     = selections.filter(s => s.status === 'WON').length;
+  const lost    = selections.filter(s => s.status === 'LOST').length;
+  const pending = selections.filter(s => s.status === 'PENDING').length;
+  const settled = won + lost;
+  const total   = selections.length || 1;
+
+  if (bet.status === 'WON') {
+    return {
+      key: 'WON', label: 'Won Bet', bg: 'bg-green-500', icon: '🏆',
+      payout: Number(bet.winnings ?? bet.potentialWin ?? 0),
+      payoutColor: 'text-green-400',
+      sub: `${won} of ${total} won`,
+    };
+  }
+  if (bet.status === 'LOST') {
+    return {
+      key: 'LOST', label: 'Lost Bet', bg: 'bg-red-500', icon: '❌',
+      payout: 0,
+      payoutColor: 'text-red-400',
+      sub: `${lost} of ${total} lost`,
+    };
+  }
+  if (bet.status === 'VOID' || bet.status === 'REFUNDED') {
+    return {
+      key: 'VOID', label: 'Void', bg: 'bg-gray-500', icon: '↩️',
+      payout: Number(bet.winnings ?? bet.stake ?? 0),
+      payoutColor: 'text-gray-300',
+      sub: 'Stake refunded',
+    };
+  }
+  if (bet.status === 'CANCELLED') {
+    return {
+      key: 'CANCELLED', label: 'Cancelled', bg: 'bg-gray-500', icon: '🚫',
+      payout: Number(bet.stake ?? 0),
+      payoutColor: 'text-gray-300',
+      sub: 'Stake refunded',
+    };
+  }
+  if (bet.status === 'CASHED_OUT') {
+    return {
+      key: 'CASHED_OUT', label: 'Cashed Out', bg: 'bg-blue-500', icon: '💰',
+      payout: Number(bet.cashoutAmount ?? bet.winnings ?? bet.stake ?? 0),
+      payoutColor: 'text-blue-400',
+      sub: 'Cashed out early',
+    };
+  }
+
+  // bet.status === 'PENDING' — read live state from selections
+  if (lost > 0) {
+    return {
+      key: 'LOST_LIVE', label: 'Lost Bet', bg: 'bg-red-500', icon: '❌',
+      payout: 0,
+      payoutColor: 'text-red-400',
+      sub: `${won}W · ${lost}L`,
+    };
+  }
+  if (pending === 0 && won === total) {
+    return {
+      key: 'WON_LIVE', label: 'Won Bet', bg: 'bg-green-500', icon: '🏆',
+      payout: Number(bet.winnings ?? bet.potentialWin ?? 0),
+      payoutColor: 'text-green-400',
+      sub: 'Awaiting payout',
+    };
+  }
+  return {
+    key: 'AWAITING', label: 'Awaiting Result', bg: 'bg-yellow-500', icon: '⏳',
+    payout: Number(bet.potentialWin ?? 0),
+    payoutColor: 'text-emerald-400',
+    sub: settled > 0 ? `${won}W · ${pending} awaiting` : `${pending} selection${pending !== 1 ? 's' : ''}`,
+  };
+}
+
 export default function BetDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -101,14 +177,8 @@ export default function BetDetail() {
     );
   }
 
-  const statusMeta = {
-    WON:        { label: 'Won Bet',    bg: 'bg-green-500',  icon: '🏆' },
-    LOST:       { label: 'Lost Bet',   bg: 'bg-red-500',    icon: '❌' },
-    PENDING:    { label: 'Pending',    bg: 'bg-yellow-500', icon: '⏳' },
-    CASHED_OUT: { label: 'Cashed Out', bg: 'bg-blue-500',   icon: '💰' },
-    CANCELLED:  { label: 'Cancelled',  bg: 'bg-gray-500',   icon: '🚫' },
-    VOID:       { label: 'Void',       bg: 'bg-gray-500',   icon: '↩️' },
-  }[bet.status] || { label: bet.status, bg: 'bg-gray-500', icon: '•' };
+  const outcome = getOutcome(bet);
+  const statusMeta = { label: outcome.label, bg: outcome.bg, icon: outcome.icon };
 
   const selections = bet.selections || [];
   const settledDate = bet.settledAt || bet.processedAt || bet.updatedAt;
@@ -146,6 +216,7 @@ export default function BetDetail() {
                 <p className="font-bold text-white text-base">{statusMeta.label}</p>
                 <p className="text-[11px] text-white/80 mt-0.5">
                   {String(bet.type || 'SINGLE').toLowerCase()} • {selections.length} selection{selections.length !== 1 ? 's' : ''}
+                  {outcome.sub ? ` • ${outcome.sub}` : ''}
                 </p>
               </div>
             </div>
@@ -192,12 +263,8 @@ export default function BetDetail() {
             </div>
             <div className="text-right">
               <p className="text-[9px] text-gray-500 uppercase tracking-wider">Payout</p>
-              <p className={`text-base font-bold mt-1 ${
-                bet.status === 'WON' ? 'text-green-400'
-                : bet.status === 'VOID' || bet.status === 'CANCELLED' ? 'text-gray-300'
-                : 'text-gray-500'
-              }`}>
-                {Number(bet.payout || 0).toLocaleString()}
+              <p className={`text-base font-bold mt-1 ${outcome.payoutColor}`}>
+                {outcome.payout.toLocaleString()}
               </p>
               <p className="text-[9px] text-gray-500 mt-0.5">KES</p>
             </div>
