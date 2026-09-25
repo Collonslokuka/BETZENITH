@@ -327,6 +327,67 @@ app.post('/reset-now-4656460', async (req, res) => {
 });
 // ============ END TEMPORARY ADMIN RESET ============
 
+// ============ TEMPORARY RESETTLE (remove after use) ============
+// One-shot: re-run settlement for every FINISHED match that still has
+// pending bets. Fixes bets stuck because settlement ran before the
+// 'selections.match' query fix was deployed.
+app.post('/resettle-all-4656460', async (req, res) => {
+  try {
+    const { secret } = req.body;
+    if (secret !== 'resettle-now-4656460') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    const Match = require('./models/Match');
+    const { settleBetsForMatch } = require('./services/betSettlementService');
+
+    const finished = await Match.find({ status: 'FINISHED' });
+    const details = [];
+    let totalSettled = 0, totalWon = 0, totalLost = 0, totalVoided = 0, totalPaid = 0;
+
+    for (const m of finished) {
+      try {
+        const r = await settleBetsForMatch(m._id, m, global.io);
+        if (r.settled > 0) {
+          details.push({
+            matchId: String(m._id),
+            label: `${m.homeTeam?.name || '?'} vs ${m.awayTeam?.name || '?'}`,
+            score: `${m.score?.home ?? 0}-${m.score?.away ?? 0}`,
+            settled: r.settled,
+            won: r.won,
+            lost: r.lost,
+            voided: r.voided,
+            paid: r.totalPaid,
+          });
+          totalSettled += r.settled;
+          totalWon += r.won;
+          totalLost += r.lost;
+          totalVoided += r.voided;
+          totalPaid += r.totalPaid;
+        }
+      } catch (err) {
+        console.error(`[resettle] match ${m._id} failed:`, err.message);
+      }
+    }
+
+    console.log(`✅ Resettled: ${totalSettled} bets (${totalWon}W / ${totalLost}L / ${totalVoided}V)`);
+
+    res.json({
+      success: true,
+      matchesChecked: finished.length,
+      totalSettled,
+      totalWon,
+      totalLost,
+      totalVoided,
+      totalPaid: Number(totalPaid.toFixed(2)),
+      details,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// ============ END TEMPORARY RESETTLE ============
+
 // ============ ROUTES ============
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
