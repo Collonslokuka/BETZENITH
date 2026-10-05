@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  getMatches, 
-  getUsers, 
-  createMatch, 
-  updateMatch, 
+import {
+  getMatches,
+  getUsers,
+  createMatch,
   settleMatch,
   deleteMatch,
   updateUserRole,
-  getDashboardStats 
+  getDashboardStats
 } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -29,65 +28,46 @@ export default function AdminDashboard() {
     awayTeam: { name: '', abbreviation: '' },
     date: new Date().toISOString().split('T')[0],
     time: '19:00',
-    status: 'SCHEDULED'
+    status: 'SCHEDULED',
+    finalHomeScore: '',
+    finalAwayScore: '',
   });
 
+  // ✅ NEW: per-market odds overrides
+  const [overrides, setOverrides] = useState([]);
+
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-    
+    if (!user) { navigate('/login'); return; }
     if (user.role !== 'admin') {
       toast.error('Admin access required');
       navigate('/');
       return;
     }
-    
     loadData();
   }, [user, navigate]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load data based on active tab
       const promises = [];
-      
-      if (activeTab === 'matches' || activeTab === 'all') {
-        promises.push(getMatches());
-      }
-      
-      if (activeTab === 'users' || activeTab === 'all') {
-        promises.push(getUsers());
-      }
-      
-      if (activeTab === 'reports' || activeTab === 'all') {
-        promises.push(getDashboardStats().catch(() => null));
-      }
-      
+      if (activeTab === 'matches' || activeTab === 'all') promises.push(getMatches());
+      if (activeTab === 'users' || activeTab === 'all') promises.push(getUsers());
+      if (activeTab === 'reports' || activeTab === 'all') promises.push(getDashboardStats().catch(() => null));
+
       const results = await Promise.allSettled(promises);
       let resultIndex = 0;
-      
+
       if (activeTab === 'matches' || activeTab === 'all') {
-        if (results[resultIndex]?.status === 'fulfilled') {
-          setMatches(results[resultIndex].value);
-        }
+        if (results[resultIndex]?.status === 'fulfilled') setMatches(results[resultIndex].value);
         resultIndex++;
       }
-      
       if (activeTab === 'users' || activeTab === 'all') {
-        if (results[resultIndex]?.status === 'fulfilled') {
-          setUsers(results[resultIndex].value);
-        }
+        if (results[resultIndex]?.status === 'fulfilled') setUsers(results[resultIndex].value);
         resultIndex++;
       }
-      
       if (activeTab === 'reports' || activeTab === 'all') {
-        if (results[resultIndex]?.status === 'fulfilled') {
-          setStats(results[resultIndex].value);
-        }
+        if (results[resultIndex]?.status === 'fulfilled') setStats(results[resultIndex].value);
       }
-      
     } catch (error) {
       console.error('Error loading admin data:', error);
       toast.error('Failed to load data');
@@ -97,23 +77,67 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    if (user?.role === 'admin') {
-      loadData();
-    }
+    if (user?.role === 'admin') loadData();
   }, [activeTab]);
+
+  // ✅ NEW: override row helpers
+  const addOverride = () => setOverrides(prev => [...prev, { name: '', odds: '' }]);
+  const removeOverride = (idx) => setOverrides(prev => prev.filter((_, i) => i !== idx));
+  const updateOverride = (idx, key, val) => {
+    setOverrides(prev => prev.map((o, i) => i === idx ? { ...o, [key]: val } : o));
+  };
+
+  // ✅ NEW: quick-fill the correct-score market for the score admin set
+  const quickFillCorrectScore = () => {
+    if (newMatch.finalHomeScore === '' || newMatch.finalAwayScore === '') {
+      toast.error('Set the final score first');
+      return;
+    }
+    const name = `${newMatch.finalHomeScore}:${newMatch.finalAwayScore}`;
+    if (overrides.some(o => o.name === name)) {
+      toast.error(`${name} already added`);
+      return;
+    }
+    setOverrides(prev => [...prev, { name, odds: '' }]);
+  };
 
   const handleCreateMatch = async (e) => {
     e.preventDefault();
-    
-    // Validate form
+
     if (!newMatch.homeTeam.name || !newMatch.homeTeam.abbreviation ||
         !newMatch.awayTeam.name || !newMatch.awayTeam.abbreviation) {
       toast.error('Please fill in all team details');
       return;
     }
-    
+
     try {
-      await createMatch(newMatch);
+      const payload = {
+        league: newMatch.league,
+        homeTeam: newMatch.homeTeam,
+        awayTeam: newMatch.awayTeam,
+        date: newMatch.date,
+        time: newMatch.time,
+        status: newMatch.status,
+        sport: 'soccer',
+      };
+
+      if (newMatch.finalHomeScore !== '' && newMatch.finalHomeScore !== null) {
+        payload.finalHomeScore = Number(newMatch.finalHomeScore);
+      }
+      if (newMatch.finalAwayScore !== '' && newMatch.finalAwayScore !== null) {
+        payload.finalAwayScore = Number(newMatch.finalAwayScore);
+      }
+
+      // ✅ NEW: pass overrides through
+      const cleanedOverrides = overrides
+        .map(o => ({ name: String(o.name).trim(), odds: Number(o.odds) }))
+        .filter(o => o.name && !isNaN(o.odds) && o.odds >= 1.01);
+
+      if (cleanedOverrides.length > 0) {
+        payload.marketOverrides = cleanedOverrides;
+      }
+
+      await createMatch(payload);
       toast.success('Match created successfully');
       setShowCreateMatch(false);
       setNewMatch({
@@ -122,8 +146,11 @@ export default function AdminDashboard() {
         awayTeam: { name: '', abbreviation: '' },
         date: new Date().toISOString().split('T')[0],
         time: '19:00',
-        status: 'SCHEDULED'
+        status: 'SCHEDULED',
+        finalHomeScore: '',
+        finalAwayScore: '',
       });
+      setOverrides([]);
       loadData();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to create match');
@@ -132,11 +159,7 @@ export default function AdminDashboard() {
 
   const handleSettleMatch = async (matchId, winner) => {
     if (!winner) return;
-    
-    if (!confirm('Are you sure you want to settle this match? This action cannot be undone.')) {
-      return;
-    }
-    
+    if (!confirm('Are you sure you want to settle this match? This action cannot be undone.')) return;
     try {
       await settleMatch(matchId, winner);
       toast.success('Match settled successfully');
@@ -147,10 +170,7 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteMatch = async (matchId) => {
-    if (!confirm('Are you sure you want to delete this match?')) {
-      return;
-    }
-    
+    if (!confirm('Are you sure you want to delete this match?')) return;
     try {
       await deleteMatch(matchId);
       toast.success('Match deleted');
@@ -190,8 +210,7 @@ export default function AdminDashboard() {
           <span className="text-[#00b3b3] font-semibold">{user?.username}</span>
         </div>
       </div>
-      
-      {/* Tabs */}
+
       <div className="flex space-x-2 border-b border-gray-800">
         {[
           { id: 'matches', label: 'Matches', icon: '⚽' },
@@ -213,7 +232,6 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      {/* Tab Content */}
       {activeTab === 'matches' && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
@@ -227,7 +245,6 @@ export default function AdminDashboard() {
             </button>
           </div>
 
-          {/* Create Match Form */}
           {showCreateMatch && (
             <div className="bg-[#1a1f2e] rounded-lg p-6 border border-gray-800">
               <h3 className="text-lg font-bold text-white mb-4">Create New Match</h3>
@@ -243,7 +260,7 @@ export default function AdminDashboard() {
                     required
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-gray-400 mb-2">Home Team Name</label>
@@ -251,7 +268,7 @@ export default function AdminDashboard() {
                       type="text"
                       value={newMatch.homeTeam.name}
                       onChange={(e) => setNewMatch({
-                        ...newMatch, 
+                        ...newMatch,
                         homeTeam: {...newMatch.homeTeam, name: e.target.value}
                       })}
                       className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
@@ -265,7 +282,7 @@ export default function AdminDashboard() {
                       type="text"
                       value={newMatch.homeTeam.abbreviation}
                       onChange={(e) => setNewMatch({
-                        ...newMatch, 
+                        ...newMatch,
                         homeTeam: {...newMatch.homeTeam, abbreviation: e.target.value.toUpperCase()}
                       })}
                       className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
@@ -283,7 +300,7 @@ export default function AdminDashboard() {
                       type="text"
                       value={newMatch.awayTeam.name}
                       onChange={(e) => setNewMatch({
-                        ...newMatch, 
+                        ...newMatch,
                         awayTeam: {...newMatch.awayTeam, name: e.target.value}
                       })}
                       className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
@@ -297,7 +314,7 @@ export default function AdminDashboard() {
                       type="text"
                       value={newMatch.awayTeam.abbreviation}
                       onChange={(e) => setNewMatch({
-                        ...newMatch, 
+                        ...newMatch,
                         awayTeam: {...newMatch.awayTeam, abbreviation: e.target.value.toUpperCase()}
                       })}
                       className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
@@ -331,6 +348,101 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* Scripted result */}
+                <div className="border border-[#2a3042] rounded-lg p-4 bg-[#0f1219]">
+                  <p className="text-sm text-[#00b3b3] font-semibold mb-1">
+                    🎯 Scripted Result (optional)
+                  </p>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Leave blank for a normal auto-simulated match. Fill both fields
+                    and the match will play and end with exactly this score.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-gray-400 mb-2">Final Home Score</label>
+                      <input
+                        type="number" min="0"
+                        value={newMatch.finalHomeScore}
+                        onChange={(e) => setNewMatch({...newMatch, finalHomeScore: e.target.value})}
+                        className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
+                        placeholder="e.g., 3"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-400 mb-2">Final Away Score</label>
+                      <input
+                        type="number" min="0"
+                        value={newMatch.finalAwayScore}
+                        onChange={(e) => setNewMatch({...newMatch, finalAwayScore: e.target.value})}
+                        className="w-full px-4 py-2 bg-[#2a2f3f] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
+                        placeholder="e.g., 1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ✅ NEW: Market odds overrides */}
+                <div className="border border-[#2a3042] rounded-lg p-4 bg-[#0f1219]">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-[#00b3b3] font-semibold">
+                      💰 Custom Market Odds (optional)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={quickFillCorrectScore}
+                      className="text-xs px-2 py-1 bg-[#2a2f3f] hover:bg-[#353b4d] text-gray-300 rounded"
+                    >
+                      + Fill correct score ({newMatch.finalHomeScore || '?'}:{newMatch.finalAwayScore || '?'})
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Override any market's odds. Market names must match exactly
+                    (e.g. <code className="text-[#00b3b3]">3:1</code>, <code className="text-[#00b3b3]">1</code>,
+                    <code className="text-[#00b3b3]"> Over 2.5</code>, <code className="text-[#00b3b3]">BTTS</code>).
+                    New names get added as new markets.
+                  </p>
+
+                  {overrides.length === 0 && (
+                    <p className="text-xs text-gray-600 italic mb-3">
+                      No overrides — auto-generated odds will be used.
+                    </p>
+                  )}
+
+                  {overrides.map((ov, idx) => (
+                    <div key={idx} className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={ov.name}
+                        onChange={(e) => updateOverride(idx, 'name', e.target.value)}
+                        placeholder="Market name (e.g. 3:1)"
+                        className="flex-1 px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
+                      />
+                      <input
+                        type="number" step="0.01" min="1.01"
+                        value={ov.odds}
+                        onChange={(e) => updateOverride(idx, 'odds', e.target.value)}
+                        placeholder="Odds"
+                        className="w-28 px-3 py-2 bg-[#2a2f3f] rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#00b3b3]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeOverride(idx)}
+                        className="px-3 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 text-sm"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addOverride}
+                    className="text-xs px-3 py-2 bg-[#2a2f3f] hover:bg-[#353b4d] text-gray-300 rounded-lg"
+                  >
+                    + Add market override
+                  </button>
+                </div>
+
                 <div className="flex space-x-3 pt-2">
                   <button
                     type="submit"
@@ -340,7 +452,7 @@ export default function AdminDashboard() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowCreateMatch(false)}
+                    onClick={() => { setShowCreateMatch(false); setOverrides([]); }}
                     className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
                   >
                     Cancel
@@ -350,7 +462,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Matches List */}
           <div className="bg-[#1a1f2e] rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -360,7 +471,7 @@ export default function AdminDashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">League</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Date/Time</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Odds</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Markets</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -374,6 +485,11 @@ export default function AdminDashboard() {
                         <div className="text-xs text-gray-500">
                           {match.homeTeam?.abbreviation || 'H'} - {match.awayTeam?.abbreviation || 'A'}
                         </div>
+                        {match.scriptedOutcome?.enabled && (
+                          <div className="text-xs text-[#00b3b3] mt-1">
+                            🎯 Scripted: {match.scriptedOutcome.homeScore}-{match.scriptedOutcome.awayScore}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-gray-400">{match.league}</td>
                       <td className="px-6 py-4">
@@ -390,13 +506,9 @@ export default function AdminDashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex space-x-1">
-                          {match.markets?.map((m, idx) => (
-                            <span key={idx} className="text-xs bg-[#2a2f3f] px-2 py-1 rounded text-[#00b3b3]">
-                              {m.odds}
-                            </span>
-                          ))}
-                        </div>
+                        <span className="text-xs bg-[#2a2f3f] px-2 py-1 rounded text-[#00b3b3]">
+                          {match.markets?.length || 0} markets
+                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex space-x-2">
@@ -485,7 +597,7 @@ export default function AdminDashboard() {
       {activeTab === 'reports' && (
         <div className="bg-[#1a1f2e] rounded-lg p-6">
           <h2 className="text-xl font-bold text-white mb-6">Reports & Analytics</h2>
-          
+
           {stats ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-[#2a2f3f] p-4 rounded-lg">

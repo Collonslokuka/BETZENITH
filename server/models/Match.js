@@ -25,51 +25,14 @@ const CLOSED_STATUSES = [
   'SUSPENDED',
 ];
 
+// ✅ CHANGED: name is now free-form (trim + maxlength) instead of a giant enum.
+// This lets marketBuilder.js add new markets without a schema migration.
 const marketSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    enum: [
-      '1', 'X', '2',
-      'Home', 'Away',
-      'Over 0.5', 'Over 1.5', 'Over 2.5', 'Under 2.5',
-      'Over 8.5', 'Under 8.5',
-      'Over 5.5', 'Under 5.5',
-      'Over 45.5', 'Under 45.5',
-      'Over 210.5', 'Under 210.5',
-      'Over 220.5', 'Under 220.5',
-      'BTTS', 'BTTS No',
-      'Double Chance 1X', 'Double Chance 12', 'Double Chance X2',
-      'Straight Sets',
-      '1 & Over 2.5', '1 & Under 2.5',
-      'X & Over 2.5', 'X & Under 2.5',
-      '2 & Over 2.5', '2 & Under 2.5',
-      '0:0', '0:1', '0:2', '0:3', '0:4',
-      '1:0', '1:1', '1:2', '1:3', '1:4',
-      '2:0', '2:1', '2:2', '2:3', '2:4',
-      '3:0', '3:1', '3:2', '3:3', '3:4',
-      '4:0', '4:1', '4:2', '4:3', '4:4',
-      'Under 0.5', 'Under 1.5', 'Over 3.5', 'Under 3.5',
-      'Over 4.5', 'Under 4.5',
-      '1 & BTTS', '1 & BTTS No',
-      'X & BTTS', 'X & BTTS No',
-      '2 & BTTS', '2 & BTTS No',
-      'Other',
-      '1/1', '1/X', '1/2',
-      'X/1', 'X/X', 'X/2',
-      '2/1', '2/X', '2/2',
-      '1H 1', '1H X', '1H 2',
-      '1H Over 0.5', '1H Under 0.5',
-      '1H Over 1.5', '1H Under 1.5',
-      '1H Over 2.5', '1H Under 2.5',
-      '1H BTTS', '1H BTTS No',
-      '1H 0:0', '1H 0:1', '1H 0:2',
-      '1H 1:0', '1H 1:1', '1H 1:2',
-      '1H 2:0', '1H 2:1', '1H 2:2',
-      '1H Other',
-      '1st Goal 1', '1st Goal 2', '1st Goal None',
-      'DNB 1', 'DNB 2',
-    ],
+    trim: true,
+    maxlength: 80,
   },
   odds: { type: Number, required: true, min: 1.01, max: 1000 },
   previousOdds: Number,
@@ -191,10 +154,15 @@ const matchSchema = new mongoose.Schema(
 
     externalId: String,
     source: String,
+
+    // ✅ CHANGED: added `enabled` + `scheduledAt` for admin-scripted matches
     scriptedOutcome: {
-      homeScore: { type: Number, default: null },
-      awayScore: { type: Number, default: null },
+      homeScore: { type: Number, default: null, min: 0 },
+      awayScore: { type: Number, default: null, min: 0 },
+      enabled: { type: Boolean, default: false },
+      scheduledAt: { type: Date, default: null },
     },
+
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },
@@ -209,6 +177,16 @@ matchSchema.index({ status: 1, startsAt: 1 });
 
 matchSchema.pre('save', function (next) {
   this.updatedAt = new Date();
+
+  // ✅ NEW: if a scripted match has a target kickoff, lock startsAt to it
+  if (
+    this.scriptedOutcome?.enabled &&
+    this.scriptedOutcome?.scheduledAt
+  ) {
+    this.startsAt = this.scriptedOutcome.scheduledAt;
+    this.date = this.scriptedOutcome.scheduledAt;
+  }
+
   if (this.isModified('status')) {
     if (!this.statusTimeline) this.statusTimeline = [];
     this.statusTimeline.push({ status: this.status, timestamp: new Date() });

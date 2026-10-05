@@ -16,6 +16,15 @@ function deriveHalfTimeScore(match) {
   return { home, away };
 }
 
+// ✅ NEW: figure out who scored first (or none)
+function firstGoalScorer(match) {
+  const goals = (match.events || [])
+    .filter(e => e.type === 'GOAL')
+    .sort((a, b) => (a.minute || 0) - (b.minute || 0));
+  if (goals.length === 0) return 'NONE';
+  return goals[0].team === 'home' ? 'HOME' : 'AWAY';
+}
+
 /**
  * Judge a single market name against the match context.
  * Returns 'WON' | 'LOST' | 'VOID'.
@@ -23,8 +32,11 @@ function deriveHalfTimeScore(match) {
 function evaluateMarket(name, ctx) {
   if (!name) return 'VOID';
   const n = String(name).trim();
-  const { ftHome, ftAway, ftWinner, ftTotal, ftBtts,
-          htHome, htAway, htWinner, htTotal, htBtts } = ctx;
+  const {
+    ftHome, ftAway, ftWinner, ftTotal, ftBtts,
+    htHome, htAway, htWinner, htTotal, htBtts,
+    firstGoal, // ✅ NEW
+  } = ctx;
 
   if (n === '1' || n === 'Home') return ftWinner === 'HOME' ? 'WON' : 'LOST';
   if (n === '2' || n === 'Away') return ftWinner === 'AWAY' ? 'WON' : 'LOST';
@@ -36,6 +48,11 @@ function evaluateMarket(name, ctx) {
 
   if (n === 'DNB 1') return ftWinner === 'HOME' ? 'WON' : 'LOST';
   if (n === 'DNB 2') return ftWinner === 'AWAY' ? 'WON' : 'LOST';
+
+  // ✅ NEW: 1st goal scorer
+  if (n === '1st Goal 1')    return firstGoal === 'HOME' ? 'WON' : 'LOST';
+  if (n === '1st Goal 2')    return firstGoal === 'AWAY' ? 'WON' : 'LOST';
+  if (n === '1st Goal None') return firstGoal === 'NONE' ? 'WON' : 'LOST';
 
   let m;
   if ((m = n.match(/^Over\s+([\d.]+)$/)))  return ftTotal > Number(m[1]) ? 'WON' : 'LOST';
@@ -122,8 +139,14 @@ async function settleBetsForMatch(matchId, match, io) {
   const htTotal = ht.home + ht.away;
   const htBtts = ht.home > 0 && ht.away > 0;
 
-  const ctx = { ftHome, ftAway, ftWinner, ftTotal, ftBtts,
-                htHome: ht.home, htAway: ht.away, htWinner, htTotal, htBtts };
+  // ✅ NEW: compute first goal once
+  const firstGoal = firstGoalScorer(match);
+
+  const ctx = {
+    ftHome, ftAway, ftWinner, ftTotal, ftBtts,
+    htHome: ht.home, htAway: ht.away, htWinner, htTotal, htBtts,
+    firstGoal,
+  };
 
   let won = 0, lost = 0, voided = 0, totalPaid = 0;
 
@@ -153,7 +176,6 @@ async function settleBetsForMatch(matchId, match, io) {
     if (allWon) {
       const payout = bet.potentialWin || Number((bet.stake * bet.totalOdds).toFixed(2));
       bet.status = 'WON';
-      // FIXED: schema uses `winnings`, not `payout`
       bet.winnings = payout;
       bet.paidOut = true;
       bet.paidOutAt = new Date();
@@ -175,7 +197,6 @@ async function settleBetsForMatch(matchId, match, io) {
 
     } else if (hasLost) {
       bet.status = 'LOST';
-      // FIXED: schema uses `winnings`
       bet.winnings = 0;
 
       if (user && io) {
@@ -187,7 +208,6 @@ async function settleBetsForMatch(matchId, match, io) {
 
     } else {
       bet.status = 'VOID';
-      // FIXED: schema uses `winnings`; full stake refunded
       bet.winnings = bet.stake;
 
       if (user) {
