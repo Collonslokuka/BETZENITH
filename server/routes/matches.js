@@ -24,10 +24,9 @@ router.get('/', optionalAuth, matchQueryValidation, async (req, res) => {
     
     let query = {};
 
-    // Apply filters
     if (status && status !== 'ALL') {
       if (status === 'LIVE') {
-        query.status = { $in: ['LIVE', 'HALFTIME', 'SECOND_HALF'] };
+        query.status = { $in: ['LIVE', 'FIRST_HALF', 'HALFTIME', 'SECOND_HALF'] };
       } else {
         query.status = status;
       }
@@ -48,11 +47,9 @@ router.get('/', optionalAuth, matchQueryValidation, async (req, res) => {
       query.$text = { $search: search };
     }
 
-    // Build sort
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-    // Get matches
     const matches = await Match.find(query)
       .sort(sort)
       .limit(parseInt(limit))
@@ -60,10 +57,8 @@ router.get('/', optionalAuth, matchQueryValidation, async (req, res) => {
 
     const total = await Match.countDocuments(query);
 
-    // Get unique leagues for filter
     const leagues = await Match.distinct('league');
 
-    // Increment view count for logged in users (optional)
     if (req.user) {
       // Could track user views here
     }
@@ -97,9 +92,14 @@ router.get('/', optionalAuth, matchQueryValidation, async (req, res) => {
 // @access  Public
 router.get('/live', async (req, res) => {
   try {
+    const { limit = 50 } = req.query;
+
     const liveMatches = await Match.find({
-      status: { $in: ['LIVE', 'HALFTIME', 'SECOND_HALF', 'EXTRA_TIME'] }
-    }).sort({ date: 1 });
+      status: { $in: ['LIVE', 'FIRST_HALF', 'HALFTIME', 'SECOND_HALF', 'EXTRA_TIME'] }
+    })
+      .select('homeTeam awayTeam score minute status league startsAt sport markets')
+      .sort({ date: 1 })
+      .limit(parseInt(limit));
 
     res.json({
       success: true,
@@ -177,24 +177,18 @@ router.get('/popular', async (req, res) => {
 });
 
 // @route   GET /api/matches/leagues
-// @desc    Get all leagues
+// @desc    Get all leagues (with counts, not full docs)
 // @access  Public
 router.get('/leagues', async (req, res) => {
   try {
     const leagues = await Match.aggregate([
-      {
-        $group: {
-          _id: '$league',
-          count: { $sum: 1 },
-          matches: { $push: '$$ROOT' }
-        }
-      },
+      { $group: { _id: '$league', count: { $sum: 1 } } },
       { $sort: { _id: 1 } }
     ]);
 
     res.json({
       success: true,
-      data: leagues
+      data: leagues.map(l => ({ league: l._id, count: l.count }))
     });
   } catch (error) {
     console.error('Get leagues error:', error);
@@ -220,11 +214,9 @@ router.get('/:id', matchIdValidation, async (req, res) => {
       });
     }
 
-    // Increment view count
     match.views += 1;
     await match.save();
 
-    // Get related matches (same league)
     const relatedMatches = await Match.find({
       league: match.league,
       _id: { $ne: match._id },
@@ -264,7 +256,6 @@ router.get('/:id/odds', matchIdValidation, async (req, res) => {
       });
     }
 
-    // Calculate additional odds info
     const oddsWithInfo = match.markets.map(market => {
       const impliedProb = OddsService.calculateImpliedProbability(market.odds);
       return {
@@ -307,7 +298,6 @@ router.get('/:id/stats', matchIdValidation, async (req, res) => {
       });
     }
 
-    // Calculate additional stats
     const stats = {
       ...match.toJSON(),
       possession: match.liveStats?.possession,
@@ -356,7 +346,6 @@ router.get('/:id/h2h', matchIdValidation, async (req, res) => {
       });
     }
 
-    // Find previous matches between these teams
     const h2h = await Match.find({
       $or: [
         { 'homeTeam.name': match.homeTeam.name, 'awayTeam.name': match.awayTeam.name },
@@ -367,7 +356,6 @@ router.get('/:id/h2h', matchIdValidation, async (req, res) => {
       .sort({ date: -1 })
       .limit(10);
 
-    // Calculate statistics
     const stats = {
       total: h2h.length,
       homeWins: 0,

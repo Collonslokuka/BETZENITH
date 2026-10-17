@@ -59,7 +59,7 @@ router.get('/scheduled/by-date', async (req, res) => {
     const matches = await Match.find({
       status: 'SCHEDULED',
       startsAt: { $gte: now, $lte: endDate },
-    }).sort({ startsAt: 1 });
+    }).sort({ startsAt: 1 }).limit(500);
 
     const grouped = matches.reduce((acc, match) => {
       const key = new Date(match.startsAt).toISOString().split('T')[0];
@@ -117,9 +117,13 @@ function formatDateLabel(dateStr) {
 // @access  Public
 router.get('/by-sport', async (req, res) => {
   try {
+    const { limit = 100 } = req.query;
     const matches = await Match.find({
       status: { $in: ['SCHEDULED', 'LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
-    }).sort({ startsAt: 1 });
+    })
+      .select('homeTeam awayTeam score minute status league startsAt sport markets')
+      .sort({ startsAt: 1 })
+      .limit(parseInt(limit));
 
     const grouped = matches.reduce((acc, m) => {
       const sport = m.sport || 'soccer';
@@ -141,13 +145,16 @@ router.get('/by-sport', async (req, res) => {
 // @access  Public
 router.get('/by-league', async (req, res) => {
   try {
-    const { sport } = req.query;
+    const { sport, limit = 200 } = req.query;
     const query = {
       status: { $in: ['SCHEDULED', 'LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
     };
     if (sport) query.sport = sport;
 
-    const matches = await Match.find(query).sort({ startsAt: 1 });
+    const matches = await Match.find(query)
+      .select('homeTeam awayTeam score minute status league startsAt sport markets')
+      .sort({ startsAt: 1 })
+      .limit(parseInt(limit));
 
     const grouped = matches.reduce((acc, m) => {
       const key = `${m.sport || 'soccer'}::${m.league}`;
@@ -184,7 +191,7 @@ router.get('/next-24h', async (req, res) => {
     const matches = await Match.find({
       status: { $in: ['SCHEDULED', 'LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
       startsAt: { $gte: now, $lte: horizon },
-    }).sort({ startsAt: 1 });
+    }).sort({ startsAt: 1 }).limit(300);
 
     const grouped = matches.reduce((acc, m) => {
       const hour = new Date(m.startsAt);
@@ -253,9 +260,13 @@ router.get('/all', async (req, res) => {
 // @route   GET /api/ai-matches/live
 router.get('/live', async (req, res) => {
   try {
+    const { limit = 50 } = req.query;
     const matches = await Match.find({
       status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
-    }).sort({ minute: -1 });
+    })
+      .select('homeTeam awayTeam score minute status league startsAt sport markets')
+      .sort({ minute: -1 })
+      .limit(parseInt(limit));
 
     res.json({
       success: true,
@@ -348,7 +359,7 @@ router.get('/league/:leagueName', async (req, res) => {
       query.status = status;
     }
 
-    const matches = await Match.find(query).sort({ startsAt: 1 });
+    const matches = await Match.find(query).sort({ startsAt: 1 }).limit(100);
 
     res.json({
       success: true,
