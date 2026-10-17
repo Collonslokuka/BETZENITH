@@ -2,41 +2,23 @@
 const Bet = require('../models/Bet');
 const User = require('../models/User');
 
-/**
- * Determine HT score from events (goals on or before minute 45).
- */
 function deriveHalfTimeScore(match) {
   let home = 0, away = 0;
   for (const ev of (match.events || [])) {
-    if (ev.type === 'GOAL' && (ev.minute ?? 0) <= 45) {
-      if (ev.team === 'home') home++;
-      else if (ev.team === 'away') away++;
-    }
+    if (ev.type !== 'GOAL') continue;
+    const totalMinute = (ev.minute ?? 0) + (ev.addedTime ?? 0);
+    if (totalMinute > 45) continue;
+    if (ev.team === 'home') home++;
+    else if (ev.team === 'away') away++;
   }
   return { home, away };
 }
 
-// ✅ NEW: figure out who scored first (or none)
-function firstGoalScorer(match) {
-  const goals = (match.events || [])
-    .filter(e => e.type === 'GOAL')
-    .sort((a, b) => (a.minute || 0) - (b.minute || 0));
-  if (goals.length === 0) return 'NONE';
-  return goals[0].team === 'home' ? 'HOME' : 'AWAY';
-}
-
-/**
- * Judge a single market name against the match context.
- * Returns 'WON' | 'LOST' | 'VOID'.
- */
-function evaluateMarket(name, ctx) {
+function evaluateMarket(name, ctx, match = {}) {
   if (!name) return 'VOID';
   const n = String(name).trim();
-  const {
-    ftHome, ftAway, ftWinner, ftTotal, ftBtts,
-    htHome, htAway, htWinner, htTotal, htBtts,
-    firstGoal, // ✅ NEW
-  } = ctx;
+  const { ftHome, ftAway, ftWinner, ftTotal, ftBtts,
+          htHome, htAway, htWinner, htTotal, htBtts } = ctx;
 
   if (n === '1' || n === 'Home') return ftWinner === 'HOME' ? 'WON' : 'LOST';
   if (n === '2' || n === 'Away') return ftWinner === 'AWAY' ? 'WON' : 'LOST';
@@ -46,13 +28,20 @@ function evaluateMarket(name, ctx) {
   if (n === 'Double Chance 12') return (ftWinner === 'HOME' || ftWinner === 'AWAY') ? 'WON' : 'LOST';
   if (n === 'Double Chance X2') return (ftWinner === 'DRAW' || ftWinner === 'AWAY') ? 'WON' : 'LOST';
 
-  if (n === 'DNB 1') return ftWinner === 'HOME' ? 'WON' : 'LOST';
-  if (n === 'DNB 2') return ftWinner === 'AWAY' ? 'WON' : 'LOST';
+  // DNB — push on draw
+  if (n === 'DNB 1') return ftWinner === 'DRAW' ? 'VOID' : ftWinner === 'HOME' ? 'WON' : 'LOST';
+  if (n === 'DNB 2') return ftWinner === 'DRAW' ? 'VOID' : ftWinner === 'AWAY' ? 'WON' : 'LOST';
 
-  // ✅ NEW: 1st goal scorer
-  if (n === '1st Goal 1')    return firstGoal === 'HOME' ? 'WON' : 'LOST';
-  if (n === '1st Goal 2')    return firstGoal === 'AWAY' ? 'WON' : 'LOST';
-  if (n === '1st Goal None') return firstGoal === 'NONE' ? 'WON' : 'LOST';
+  // 1st Goal markets
+  if (n === '1st Goal 1' || n === '1st Goal 2' || n === '1st Goal None') {
+    const first = (match.events || [])
+      .filter(e => e.type === 'GOAL')
+      .sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0))[0];
+    if (n === '1st Goal None') return first ? 'LOST' : 'WON';
+    if (!first) return 'LOST';
+    return (n === '1st Goal 1' && first.team === 'home') ||
+           (n === '1st Goal 2' && first.team === 'away') ? 'WON' : 'LOST';
+  }
 
   let m;
   if ((m = n.match(/^Over\s+([\d.]+)$/)))  return ftTotal > Number(m[1]) ? 'WON' : 'LOST';
@@ -69,7 +58,6 @@ function evaluateMarket(name, ctx) {
     const sideWon = (m[1] === '1' && ftWinner === 'HOME') || (m[1] === 'X' && ftWinner === 'DRAW') || (m[1] === '2' && ftWinner === 'AWAY');
     return sideWon && !ftBtts ? 'WON' : 'LOST';
   }
-
   if ((m = n.match(/^([1X2]) & (Over|Under)\s+([\d.]+)$/))) {
     const sideWon = (m[1] === '1' && ftWinner === 'HOME') || (m[1] === 'X' && ftWinner === 'DRAW') || (m[1] === '2' && ftWinner === 'AWAY');
     const line = Number(m[3]);
@@ -115,9 +103,6 @@ function evaluateMarket(name, ctx) {
   return 'VOID';
 }
 
-/**
- * Settle all pending bets for a match.
- */
 async function settleBetsForMatch(matchId, match, io) {
   const bets = await Bet.find({
     status: 'PENDING',
@@ -139,14 +124,8 @@ async function settleBetsForMatch(matchId, match, io) {
   const htTotal = ht.home + ht.away;
   const htBtts = ht.home > 0 && ht.away > 0;
 
-  // ✅ NEW: compute first goal once
-  const firstGoal = firstGoalScorer(match);
-
-  const ctx = {
-    ftHome, ftAway, ftWinner, ftTotal, ftBtts,
-    htHome: ht.home, htAway: ht.away, htWinner, htTotal, htBtts,
-    firstGoal,
-  };
+  const ctx = { ftHome, ftAway, ftWinner, ftTotal, ftBtts,
+                htHome: ht.home, htAway: ht.away, htWinner, htTotal, htBtts };
 
   let won = 0, lost = 0, voided = 0, totalPaid = 0;
 
@@ -154,7 +133,7 @@ async function settleBetsForMatch(matchId, match, io) {
     for (const sel of (bet.selections || [])) {
       if (String(sel.match) !== String(matchId)) continue;
       const name = sel.marketName || sel.selection || sel.market;
-      const verdict = evaluateMarket(name, ctx);
+      const verdict = evaluateMarket(name, ctx, match);
       sel.status = verdict;
       sel.settledAt = new Date();
     }
@@ -167,7 +146,7 @@ async function settleBetsForMatch(matchId, match, io) {
 
     const hasLost = (bet.selections || []).some(s => s.status === 'LOST');
     const hasVoid = (bet.selections || []).some(s => s.status === 'VOID');
-    const allWon = !hasLost && !hasVoid;
+    const allWon = (bet.selections || []).length > 0 && !hasLost && !hasVoid;
 
     const user = await User.findById(bet.user);
     bet.settledAt = new Date();

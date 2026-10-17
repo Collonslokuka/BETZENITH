@@ -1,6 +1,7 @@
 // server/services/OddsApiService.js
 const axios = require('axios');
 const Match = require('../models/Match');
+const { buildMarkets } = require('../utils/marketBuilder');
 
 const SPORTS = [
   { key: 'soccer_epl',                  sport: 'soccer',            league: 'Premier League' },
@@ -104,7 +105,7 @@ class OddsApiService {
             status: 'SCHEDULED',
             minute: 0,
             score: { home: 0, away: 0 },
-            markets: buildMarketsForSport(cfg.sport),
+            markets: buildMarkets(cfg.sport),
             events: [],
             source: 'odds-api',
             externalId: ev.id || null,
@@ -135,51 +136,6 @@ function abbr(name) {
   const words = cleaned.split(/\s+/);
   if (words.length === 1) return cleaned.substring(0, 3).toUpperCase();
   return words.slice(0, 3).map((w) => w[0]).join('').toUpperCase();
-}
-
-function buildMarketsForSport(sport) {
-  switch (sport) {
-    case 'soccer':
-      return [
-        { name: '1', odds: +(1.4 + Math.random() * 2.6).toFixed(2), isActive: true },
-        { name: 'X', odds: +(3.0 + Math.random() * 1.3).toFixed(2), isActive: true },
-        { name: '2', odds: +(1.4 + Math.random() * 2.6).toFixed(2), isActive: true },
-      ];
-    case 'basketball':
-      return [
-        { name: 'Home', odds: +(1.2 + Math.random() * 2.0).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.2 + Math.random() * 2.0).toFixed(2), isActive: true },
-        { name: 'Over 220.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 220.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    case 'american-football':
-      return [
-        { name: 'Home', odds: +(1.3 + Math.random() * 1.8).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.3 + Math.random() * 1.8).toFixed(2), isActive: true },
-        { name: 'Over 45.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 45.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    case 'baseball':
-      return [
-        { name: 'Home', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Over 8.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 8.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    case 'ice-hockey':
-      return [
-        { name: 'Home', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Away', odds: +(1.5 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: 'Over 5.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-        { name: 'Under 5.5', odds: +(1.85 + Math.random() * 0.2).toFixed(2), isActive: true },
-      ];
-    default:
-      return [
-        { name: '1', odds: +(1.5 + Math.random() * 2.0).toFixed(2), isActive: true },
-        { name: 'X', odds: +(2.8 + Math.random() * 1.5).toFixed(2), isActive: true },
-        { name: '2', odds: +(1.5 + Math.random() * 2.0).toFixed(2), isActive: true },
-      ];
-  }
 }
 
 module.exports = new OddsApiService();

@@ -2,38 +2,15 @@
 const mongoose = require('mongoose');
 
 const BETTING_CLOSE_MINUTES = {
-  soccer: 85,
-  basketball: 45,
-  football: 55,
-  baseball: 8,
-  hockey: 55,
-  tennis: 4,
-  mma: 4,
-  boxing: 11,
-  golf: 3,
-  cricket: 18,
-  rugby: 75,
-  f1: 50,
-  esports: 4,
+  soccer: 85, basketball: 45, football: 55, baseball: 8, hockey: 55,
+  tennis: 4, mma: 4, boxing: 11, golf: 3, cricket: 18, rugby: 75, f1: 50, esports: 4,
 };
 
-const CLOSED_STATUSES = [
-  'FINISHED',
-  'CANCELLED',
-  'POSTPONED',
-  'ABANDONED',
-  'SUSPENDED',
-];
+const CLOSED_STATUSES = ['FINISHED', 'CANCELLED', 'POSTPONED', 'ABANDONED', 'SUSPENDED'];
+const IN_PLAY_STATUSES = ['FIRST_HALF', 'LIVE', 'HALFTIME', 'SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'];
 
-// ✅ CHANGED: name is now free-form (trim + maxlength) instead of a giant enum.
-// This lets marketBuilder.js add new markets without a schema migration.
 const marketSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true,
-    maxlength: 80,
-  },
+  name: { type: String, required: true, index: true },
   odds: { type: Number, required: true, min: 1.01, max: 1000 },
   previousOdds: Number,
   oddsHistory: [
@@ -94,6 +71,7 @@ const matchSchema = new mongoose.Schema(
     time: String,
     venue: String,
     startsAt: { type: Date, index: true },
+    timezone: { type: String, default: 'Africa/Nairobi', index: true },
     matchDuration: { type: Number, default: 90 },
 
     score: {
@@ -154,14 +132,12 @@ const matchSchema = new mongoose.Schema(
 
     externalId: String,
     source: String,
-
-    // ✅ CHANGED: added `enabled` + `scheduledAt` for admin-scripted matches
     scriptedOutcome: {
-      homeScore: { type: Number, default: null, min: 0 },
-      awayScore: { type: Number, default: null, min: 0 },
-      enabled: { type: Boolean, default: false },
-      scheduledAt: { type: Date, default: null },
+      homeScore: { type: Number, default: null },
+      awayScore: { type: Number, default: null },
     },
+    lastUpdated: Date,
+    statusTimeline: [{ status: String, timestamp: Date }],
 
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
@@ -177,16 +153,6 @@ matchSchema.index({ status: 1, startsAt: 1 });
 
 matchSchema.pre('save', function (next) {
   this.updatedAt = new Date();
-
-  // ✅ NEW: if a scripted match has a target kickoff, lock startsAt to it
-  if (
-    this.scriptedOutcome?.enabled &&
-    this.scriptedOutcome?.scheduledAt
-  ) {
-    this.startsAt = this.scriptedOutcome.scheduledAt;
-    this.date = this.scriptedOutcome.scheduledAt;
-  }
-
   if (this.isModified('status')) {
     if (!this.statusTimeline) this.statusTimeline = [];
     this.statusTimeline.push({ status: this.status, timestamp: new Date() });
@@ -201,11 +167,10 @@ matchSchema.methods.isBettingAvailable = function () {
   const sport = (this.sport || 'soccer').toLowerCase();
   const cutoff = BETTING_CLOSE_MINUTES[sport] ?? 85;
   const minute = this.minute || 0;
-
-  if (['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && minute >= cutoff) return false;
-
   const maxDuration = this.matchDuration || 90;
-  if (['LIVE', 'SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && minute >= maxDuration) return false;
+
+  if (IN_PLAY_STATUSES.includes(this.status) && minute >= cutoff) return false;
+  if (IN_PLAY_STATUSES.includes(this.status) && minute >= maxDuration) return false;
 
   return true;
 };
@@ -216,8 +181,7 @@ matchSchema.methods.getBettingClosedReason = function () {
 
   const sport = (this.sport || 'soccer').toLowerCase();
   const cutoff = BETTING_CLOSE_MINUTES[sport] ?? 85;
-
-  if (['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && (this.minute || 0) >= cutoff) {
+  if (IN_PLAY_STATUSES.includes(this.status) && (this.minute || 0) >= cutoff) {
     return `Betting closed — match is in its final stages (${this.minute}')`;
   }
   return 'Betting is not available';
@@ -231,6 +195,9 @@ matchSchema.methods.updateOdds = async function (marketIndex, newOdds, reason = 
   if (this.status === 'FINISHED') throw new Error('Cannot update odds for finished match');
   const market = this.markets[marketIndex];
   if (!market) throw new Error('Market not found');
+  if (!Number.isFinite(newOdds) || newOdds < 1.01 || newOdds > 1000) {
+    throw new Error('Invalid odds — must be between 1.01 and 1000');
+  }
 
   if (!market.oddsHistory) market.oddsHistory = [];
   market.oddsHistory.push({ odds: market.odds, timestamp: new Date(), reason });
@@ -243,12 +210,10 @@ matchSchema.methods.updateOdds = async function (marketIndex, newOdds, reason = 
 
 matchSchema.methods.addEvent = async function (eventData) {
   if (!this.events) this.events = [];
+  if (!this.score) this.score = { home: 0, away: 0 };
   if (eventData.type === 'GOAL') {
-    if (eventData.team === 'home') {
-      this.score.home += 1;
-    } else {
-      this.score.away += 1;
-    }
+    if (eventData.team === 'home') this.score.home = (this.score.home || 0) + 1;
+    else this.score.away = (this.score.away || 0) + 1;
     eventData.homeScore = this.score.home;
     eventData.awayScore = this.score.away;
   }
@@ -266,7 +231,7 @@ matchSchema.methods.updateLiveStats = async function (stats) {
 };
 
 matchSchema.methods.getAvailableMarkets = function () {
-  return this.markets.filter((m) => m.isActive && !m.suspended);
+  return this.markets.filter((m) => m.isActive && !m.suspended && m.odds >= 1.01);
 };
 
 matchSchema.virtual('volumeByMarket').get(function () {

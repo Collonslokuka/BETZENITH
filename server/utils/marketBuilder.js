@@ -1,14 +1,10 @@
 // server/utils/marketBuilder.js
-// ─── Single source of truth for every match's market board ───
-// Used by adminPanel, aiMatchService, and FixturesCoordinator so that
-// admin-created, system-generated, and API-imported matches all have the
-// same complete catalog. Soccer gets the full ~90-market board; other
-// sports get sport-appropriate catalogs using the same API.
+// Single source of truth for every match's market board.
 
 const TOTAL_LINES = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5];
 
 function toOdds(p) {
-  return Math.max(1.01, +(1 / Math.max(p, 0.001)).toFixed(2));
+  return Math.max(1.01, Math.min(1000, +(1 / Math.max(p, 0.001)).toFixed(2)));
 }
 
 function poissonOver(lambda, line) {
@@ -23,9 +19,14 @@ function poissonOver(lambda, line) {
 }
 
 function norm1X2(odds = {}) {
-  const h = Number(odds.home) || +(1.35 + Math.random() * 2.6).toFixed(2);
-  const d = Number(odds.draw) || +(2.9 + Math.random() * 1.4).toFixed(2);
-  const a = Number(odds.away) || +(1.35 + Math.random() * 2.6).toFixed(2);
+  const rnd = () => +(1.35 + Math.random() * 2.6).toFixed(2);
+  const pick = (v, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 1 && n <= 1000 ? +n.toFixed(2) : fallback();
+  };
+  const h = pick(odds.home, rnd);
+  const d = pick(odds.draw, () => +(2.9 + Math.random() * 1.4).toFixed(2));
+  const a = pick(odds.away, rnd);
   return { home: h, draw: d, away: a };
 }
 
@@ -40,12 +41,10 @@ function buildSoccerMarkets(odds = {}) {
   const markets = [];
   const push = (name, val) => markets.push({ name, odds: val, isActive: true });
 
-  // 1X2
   push('1', +H.toFixed(2));
   push('X', +D.toFixed(2));
   push('2', +A.toFixed(2));
 
-  // 1st Goal
   const LAMBDA = 2.7;
   const LAMBDA_1H = LAMBDA * 0.45;
   const pNoGoal = Math.exp(-LAMBDA);
@@ -55,29 +54,24 @@ function buildSoccerMarkets(odds = {}) {
   push('1st Goal 2', toOdds(pFirstAway));
   push('1st Goal None', toOdds(pNoGoal));
 
-  // Double Chance
   push('Double Chance 1X', toOdds(pH + pD));
   push('Double Chance 12', toOdds(pH + pA));
   push('Double Chance X2', toOdds(pD + pA));
 
-  // Draw No Bet
   const pDnb1 = pH / (pH + pA);
   push('DNB 1', toOdds(pDnb1));
   push('DNB 2', toOdds(1 - pDnb1));
 
-  // Totals
   TOTAL_LINES.forEach(line => {
     const pOver = poissonOver(LAMBDA, line);
     push(`Over ${line}`, toOdds(pOver));
     push(`Under ${line}`, toOdds(1 - pOver));
   });
 
-  // BTTS
   const pBtts = Math.min(0.75, 0.55 + 0.10 * (1 - Math.abs(pH - pA)));
   push('BTTS', toOdds(pBtts));
   push('BTTS No', toOdds(1 - pBtts));
 
-  // 1X2 & BTTS
   push('1 & BTTS', toOdds(pH * pBtts * 0.75));
   push('1 & BTTS No', toOdds(pH * (1 - pBtts) * 1.25));
   push('X & BTTS', toOdds(pD * pBtts * 1.10));
@@ -85,7 +79,6 @@ function buildSoccerMarkets(odds = {}) {
   push('2 & BTTS', toOdds(pA * pBtts * 0.75));
   push('2 & BTTS No', toOdds(pA * (1 - pBtts) * 1.25));
 
-  // 1X2 & Total 2.5
   const pOver25 = poissonOver(LAMBDA, 2.5);
   const pUnder25 = 1 - pOver25;
   push('1 & Over 2.5', toOdds(pH * pOver25 * 1.25));
@@ -95,7 +88,6 @@ function buildSoccerMarkets(odds = {}) {
   push('2 & Over 2.5', toOdds(pA * pOver25 * 1.25));
   push('2 & Under 2.5', toOdds(pA * pUnder25 * 1.55));
 
-  // Correct Score
   const csBase = {
     '0:0': 0.11, '0:1': 0.07, '0:2': 0.025, '0:3': 0.006, '0:4': 0.0015,
     '1:0': 0.15, '1:1': 0.13, '1:2': 0.05,  '1:3': 0.012, '1:4': 0.0025,
@@ -114,7 +106,6 @@ function buildSoccerMarkets(odds = {}) {
   });
   push('Other', toOdds(0.04));
 
-  // Halftime / Fulltime
   const pH1 = Math.min(0.95, Math.sqrt(pH) * 0.6 + pH * 0.4);
   const pD1 = 0.34;
   const pA1 = Math.max(0.02, 1 - pH1 - pD1);
@@ -124,24 +115,20 @@ function buildSoccerMarkets(odds = {}) {
     ['2','1', pA1 * pH * 8.0 ], ['2','X', pA1 * pD * 4.0], ['2','2', pA1 * pA * 1.55],
   ].forEach(([ht, ft, p]) => push(`${ht}/${ft}`, toOdds(p)));
 
-  // 1st Half - 1X2
   push('1H 1', toOdds(pH1));
   push('1H X', toOdds(pD1));
   push('1H 2', toOdds(pA1));
 
-  // 1st Half - Totals
   [0.5, 1.5, 2.5].forEach(line => {
     const pOver = poissonOver(LAMBDA_1H, line);
     push(`1H Over ${line}`, toOdds(pOver));
     push(`1H Under ${line}`, toOdds(1 - pOver));
   });
 
-  // 1st Half - BTTS
   const pBtts1H = pBtts * 0.35;
   push('1H BTTS', toOdds(pBtts1H));
   push('1H BTTS No', toOdds(1 - pBtts1H));
 
-  // 1st Half - Correct Score
   const cs1H = {
     '0:0': 0.35, '0:1': 0.12, '0:2': 0.03,
     '1:0': 0.20, '1:1': 0.10, '1:2': 0.03,
@@ -219,18 +206,49 @@ function buildSimpleMarkets(odds = {}) {
   ];
 }
 
-function buildMarkets(sport, odds = {}) {
-  switch ((sport || 'soccer').toLowerCase()) {
-    case 'soccer':            return buildSoccerMarkets(odds);
-    case 'basketball':        return buildBasketballMarkets(odds);
-    case 'tennis':            return buildTennisMarkets(odds);
-    case 'american-football': return buildAmericanFootballMarkets(odds);
-    case 'baseball':          return buildBaseballMarkets(odds);
-    case 'ice-hockey':        return buildIceHockeyMarkets(odds);
-    case 'cricket':
-    case 'mma':               return buildSimpleMarkets(odds);
-    default:                  return buildSoccerMarkets(odds);
+// ─── NAME-KEYED OVERRIDES ─────────────────────────────────────
+function applyOverrides(markets, odds = {}) {
+  for (const [name, value] of Object.entries(odds || {})) {
+    if (name === 'home' || name === 'draw' || name === 'away') continue;
+    const price = Number(value);
+    if (!Number.isFinite(price) || price <= 1 || price > 1000) continue;
+    const hit = markets.find(m => m.name === name);
+    if (hit) hit.odds = +price.toFixed(2);
+    else markets.push({ name, odds: +price.toFixed(2), isActive: true });
   }
+  return markets;
 }
 
-module.exports = { buildMarkets };
+function buildMarkets(sport, odds = {}, extraMarkets = []) {
+  let list;
+  switch ((sport || 'soccer').toLowerCase()) {
+    case 'soccer':            list = buildSoccerMarkets(odds); break;
+    case 'basketball':        list = buildBasketballMarkets(odds); break;
+    case 'tennis':            list = buildTennisMarkets(odds); break;
+    case 'american-football': list = buildAmericanFootballMarkets(odds); break;
+    case 'baseball':          list = buildBaseballMarkets(odds); break;
+    case 'ice-hockey':        list = buildIceHockeyMarkets(odds); break;
+    case 'cricket':
+    case 'mma':               list = buildSimpleMarkets(odds); break;
+    default:                  list = buildSoccerMarkets(odds);
+  }
+
+  applyOverrides(list, odds);
+
+  for (const m of extraMarkets) {
+    if (!m?.name) continue;
+    const price = Number(m.odds);
+    if (!Number.isFinite(price) || price <= 1 || price > 1000) continue;
+    const hit = list.find(x => x.name === m.name);
+    if (hit) {
+      hit.odds = +price.toFixed(2);
+      if (m.isActive !== undefined) hit.isActive = !!m.isActive;
+    } else {
+      list.push({ name: m.name, odds: +price.toFixed(2), isActive: m.isActive !== false });
+    }
+  }
+
+  return list;
+}
+
+module.exports = { buildMarkets, applyOverrides };
