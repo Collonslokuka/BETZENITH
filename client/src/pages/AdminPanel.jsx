@@ -29,6 +29,43 @@ const LEAGUES = [
 
 const DEFAULT_ODDS = { home: '1.90', draw: '3.40', away: '3.80' };
 
+// ==========================================
+// DROPDOWN OPTIONS FOR CUSTOM MARKETS
+// Matching your Pawacash screenshots perfectly
+// ==========================================
+const MARKET_OPTIONS = [
+  { label: 'Match Winner (1X2)', options: ['1', 'X', '2', 'Home', 'Away'] },
+  { label: 'Double Chance (DC)', options: ['Double Chance 1X', 'Double Chance 12', 'Double Chance X2', 'DNB 1', 'DNB 2'] },
+  { label: 'Totals (Over/Under)', options: [
+      'Over 0.5', 'Under 0.5', 'Over 1.5', 'Under 1.5', 'Over 2.5', 'Under 2.5', 
+      'Over 3.5', 'Under 3.5', 'Over 4.5', 'Under 4.5', 'Over 5.5', 'Under 5.5',
+      'Over 8.5', 'Under 8.5', 'Over 45.5', 'Under 45.5', 
+      'Over 210.5', 'Under 210.5', 'Over 220.5', 'Under 220.5'
+  ]},
+  { label: 'Both Teams to Score (GG/NG)', options: ['BTTS', 'BTTS No'] },
+  { label: 'Correct Score', options: [
+      '0:0', '0:1', '0:2', '0:3', '0:4', 
+      '1:0', '1:1', '1:2', '1:3', '1:4', 
+      '2:0', '2:1', '2:2', '2:3', '2:4', 
+      '3:0', '3:1', '3:2', '3:3', '3:4', 
+      '4:0', '4:1', '4:2', '4:3', '4:4', 'Other'
+  ]},
+  { label: 'Halftime / Fulltime (HT/FT)', options: [
+      '1/1', '1/X', '1/2', 'X/1', 'X/X', 'X/2', '2/1', '2/X', '2/2'
+  ]},
+  { label: '1st Half', options: [
+      '1H 1', '1H X', '1H 2', 
+      '1H Over 0.5', '1H Under 0.5', '1H Over 1.5', '1H Under 1.5', '1H Over 2.5', '1H Under 2.5',
+      '1H BTTS', '1H BTTS No', 
+      '1H 0:0', '1H 0:1', '1H 0:2', '1H 1:0', '1H 1:1', '1H 1:2', '1H 2:0', '1H 2:1', '1H 2:2', '1H Other'
+  ]},
+  { label: 'Combinations', options: [
+      '1 & Over 2.5', '1 & Under 2.5', 'X & Over 2.5', 'X & Under 2.5', '2 & Over 2.5', '2 & Under 2.5',
+      '1 & BTTS', '1 & BTTS No', 'X & BTTS', 'X & BTTS No', '2 & BTTS', '2 & BTTS No'
+  ]},
+  { label: 'Others', options: ['Straight Sets', '1st Goal 1', '1st Goal 2', '1st Goal None'] }
+];
+
 // ─── market grouping for the editor ───
 const WINNER       = ['1', 'X', '2', 'Home', 'Away'];
 const isDC         = n => n.startsWith('Double Chance');
@@ -424,8 +461,24 @@ export default function AdminPanel() {
                     <div className="space-y-2">
                       {form.customMarkets.map((m, idx) => (
                         <div key={idx} className="flex gap-2">
-                          <input placeholder="Name (e.g. 1, X, 2, Over 2.5)" value={m.name} onChange={e => updateCustomMarket(idx, 'name', e.target.value)} className="flex-1 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
-                          <input type="number" step="0.01" placeholder="Odds" value={m.odds} onChange={e => updateCustomMarket(idx, 'odds', e.target.value)} className="w-24 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
+                          
+                          {/* DROPDOWN SELECT INSTEAD OF TEXT INPUT */}
+                          <select 
+                            value={m.name} 
+                            onChange={e => updateCustomMarket(idx, 'name', e.target.value)} 
+                            className="flex-1 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs border border-[#1f2535]"
+                          >
+                            <option value="">-- Select Market --</option>
+                            {MARKET_OPTIONS.map(group => (
+                              <optgroup key={group.label} label={group.label}>
+                                {group.options.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+
+                          <input type="number" step="0.01" placeholder="Odds" value={m.odds} onChange={e => updateCustomMarket(idx, 'odds', e.target.value)} className="w-24 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs border border-[#1f2535]" />
                           <button type="button" onClick={() => removeCustomMarket(idx)} className="px-2 bg-red-600/20 text-red-400 rounded text-xs hover:bg-red-600/40">Del</button>
                         </div>
                       ))}
