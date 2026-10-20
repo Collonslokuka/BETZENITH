@@ -53,11 +53,6 @@ const SEED_FINISHED_PER_SPORT = {
   mma: 25,
 };
 
-function minutesPerTick(sport) {
-  const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
-  return Math.max(1, Math.ceil(dur.regular / 45));
-}
-
 // ============================================================
 //  SERVICE
 // ============================================================
@@ -151,12 +146,6 @@ class AIMatchService {
       match.score = { home: 0, away: 0 };
       match.lastUpdated = now;
       match.events = [];
-
-      // ✅ NEW: scripted matches always start at minute 0 with a clean slate
-      if (match.scriptedOutcome?.enabled) {
-        match.minute = 0;
-      }
-
       await match.save();
     }
 
@@ -168,13 +157,22 @@ class AIMatchService {
       status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
     });
 
+    const now = Date.now();
+
     for (const match of live) {
       const sport = match.sport || 'soccer';
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      const tick = minutesPerTick(sport);
-      const newMinute = Math.min((match.minute || 0) + tick, dur.regular);
+      // ── FIX: derive minute from real elapsed wall-clock time ──
+      const startsAtMs = new Date(match.startsAt).getTime();
+      if (!startsAtMs || now < startsAtMs) continue;
+
+      const elapsed = Math.floor((now - startsAtMs) / 60000);
+      const newMinute = Math.min(elapsed, dur.regular);
+
+      if (newMinute === match.minute) continue;
+
       match.minute = newMinute;
 
       if (newMinute < dur.halftime) match.status = 'FIRST_HALF';
@@ -182,14 +180,12 @@ class AIMatchService {
       else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
       else match.status = 'SECOND_HALF';
 
-      // ✅ CHANGED: recognize the new `enabled` flag OR legacy `source === 'admin-manual'`
-      const isScripted =
-        match.scriptedOutcome?.enabled === true ||
-        (match.source === 'admin-manual' &&
-          match.scriptedOutcome?.homeScore !== null &&
-          match.scriptedOutcome?.homeScore !== undefined);
-
-      if (isScripted) {
+      // ── SCRIPTED OUTCOME (admin-created matches) ──
+      if (
+        match.source === 'admin-manual' &&
+        match.scriptedOutcome?.homeScore != null &&
+        match.scriptedOutcome?.awayScore != null
+      ) {
         const targetHome = match.scriptedOutcome.homeScore || 0;
         const targetAway = match.scriptedOutcome.awayScore || 0;
 
@@ -222,8 +218,7 @@ class AIMatchService {
 
         match.score = { home: h, away: a };
 
-        // Random card during play
-        if (newMinute >= 1 && Math.random() < 0.06) {
+        if (newMinute >= 1 && Math.random() < 0.015) {
           const isRed = Math.random() < 0.05;
           match.events = match.events || [];
           match.events.push({
@@ -274,7 +269,8 @@ class AIMatchService {
           else match.score.away = Math.min((match.score.away || 0) + 1, 1);
         }
       } else {
-        if (Math.random() < weights.homeGoalRate * tick / 30) {
+        // per-minute rate; was weights * tick/30 with tick=2 → double rate
+        if (Math.random() < weights.homeGoalRate / 60) {
           match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
           match.events = match.events || [];
           match.events.push({
@@ -283,7 +279,7 @@ class AIMatchService {
             at: new Date(),
           });
         }
-        if (Math.random() < weights.awayGoalRate * tick / 30) {
+        if (Math.random() < weights.awayGoalRate / 60) {
           match.score.away = Math.min((match.score.away || 0) + 1, weights.maxScore);
           match.events = match.events || [];
           match.events.push({
@@ -294,7 +290,7 @@ class AIMatchService {
         }
       }
 
-      if (newMinute >= 1 && Math.random() < 0.06) {
+      if (newMinute >= 1 && Math.random() < 0.015) {
         const isRed = Math.random() < 0.05;
         match.events = match.events || [];
         match.events.push({
@@ -332,14 +328,11 @@ class AIMatchService {
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
 
       if ((match.minute || 0) >= dur.regular) {
-        // ✅ CHANGED: force exact scripted score using the new `enabled` flag
-        const isScripted =
-          match.scriptedOutcome?.enabled === true ||
-          (match.source === 'admin-manual' &&
-            match.scriptedOutcome?.homeScore !== null &&
-            match.scriptedOutcome?.homeScore !== undefined);
-
-        if (isScripted) {
+        if (
+          match.source === 'admin-manual' &&
+          match.scriptedOutcome?.homeScore != null &&
+          match.scriptedOutcome?.awayScore != null
+        ) {
           match.score = {
             home: match.scriptedOutcome.homeScore || 0,
             away: match.scriptedOutcome.awayScore || 0,
@@ -638,8 +631,6 @@ class AIMatchService {
 // ============================================================
 //  HELPERS
 // ============================================================
-
-// Random player name for cards
 const FIRST_INITIALS = ['J.','M.','A.','K.','L.','R.','S.','T.','D.','B.','C.','N.','P.','E.','V.'];
 const LAST_NAMES = [
   'Silva','Garcia','Müller','Rossi','Salah','Kane','Lopez','Martinez',
@@ -652,40 +643,20 @@ function randomPlayerName() {
   return `${f} ${l}`;
 }
 
-// ✅ CHANGED: robust deterministic goal schedule.
-// Always produces minutes between 5 and 88, spread evenly.
-// Same matchId + same target → same timeline across server restarts.
 function goalScheduleForMatch(matchId, targetHome, targetAway) {
-  const seed = String(matchId).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-
-  const total = (targetHome || 0) + (targetAway || 0);
-  if (total === 0) return [];
-
-  // Evenly spread goal minutes across 5..85 with deterministic jitter
-  const slots = [];
-  for (let i = 0; i < total; i++) {
-    const base = 5 + Math.floor((i / total) * 80);
-    const jitter = (((seed * (i + 1) * 9301) + 49297) % 233280) / 233280 * 6;
-    slots.push(Math.min(88, Math.max(1, base + Math.floor(jitter))));
-  }
-  slots.sort((a, b) => a - b);
-
-  // Assign sides
-  const sides = [];
-  for (let i = 0; i < (targetHome || 0); i++) sides.push('home');
-  for (let i = 0; i < (targetAway || 0); i++) sides.push('away');
-
-  // Deterministic Fisher-Yates shuffle
-  for (let i = sides.length - 1; i > 0; i--) {
-    const j = (seed * (i + 7)) % (i + 1);
-    [sides[i], sides[j]] = [sides[j], sides[i]];
-  }
-
+  const seed = String(matchId ?? '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) || 1;
   const goals = [];
-  for (let i = 0; i < total; i++) {
-    goals.push({ minute: slots[i], team: sides[i] });
+  let counter = 0;
+
+  for (let i = 0; i < targetHome; i++) goals.push({ team: 'home', key: seed + (++counter) * 17 });
+  for (let i = 0; i < targetAway; i++) goals.push({ team: 'away', key: seed + (++counter) * 23 });
+
+  for (const g of goals) {
+    const r = (g.key * 9301 + 49297) % 233280;
+    g.minute = 5 + Math.floor((r / 233280) * 80);
   }
-  return goals.sort((a, b) => a.minute - b.minute);
+  goals.sort((a, b) => a.minute - b.minute);
+  return goals;
 }
 
 module.exports = new AIMatchService();

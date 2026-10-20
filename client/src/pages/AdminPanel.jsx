@@ -107,6 +107,7 @@ export default function AdminPanel() {
       finalHomeScore: '1',
       finalAwayScore: '0',
       odds: { ...DEFAULT_ODDS },
+      customMarkets: [], // NEW: Custom markets array
     };
   });
 
@@ -122,6 +123,29 @@ export default function AdminPanel() {
   const applyWinnerMargin = (winner, margin) => {
     const { home, away } = scoreFromWinnerMargin(winner, margin);
     setForm(f => ({ ...f, winner, margin: String(margin), finalHomeScore: home, finalAwayScore: away }));
+  };
+
+  // NEW: Handlers for custom markets
+  const addCustomMarket = () => {
+    setForm(f => ({
+      ...f,
+      customMarkets: [...f.customMarkets, { name: '', odds: '1.50' }]
+    }));
+  };
+
+  const updateCustomMarket = (index, field, value) => {
+    setForm(f => {
+      const updated = [...f.customMarkets];
+      updated[index][field] = value;
+      return { ...f, customMarkets: updated };
+    });
+  };
+
+  const removeCustomMarket = (index) => {
+    setForm(f => ({
+      ...f,
+      customMarkets: f.customMarkets.filter((_, i) => i !== index)
+    }));
   };
 
   const login = async () => {
@@ -157,13 +181,23 @@ export default function AdminPanel() {
     if (form.odds.draw !== '') oddsPayload.draw = Number(form.odds.draw);
     if (form.odds.away !== '') oddsPayload.away = Number(form.odds.away);
 
+    // Process custom markets
+    const marketsPayload = form.customMarkets
+      .filter(m => m.name && m.odds)
+      .map(m => ({ name: m.name.trim(), odds: Number(m.odds), isActive: true }));
+
     const startsAtUTC = localInputToUTC(form.startsAt);
     if (!startsAtUTC) return toast.error('Invalid start time');
 
     try {
       await api.post(
         '/admin-panel/matches',
-        { ...form, startsAt: startsAtUTC, odds: oddsPayload },
+        { 
+          ...form, 
+          startsAt: startsAtUTC, 
+          odds: oddsPayload,
+          markets: marketsPayload.length > 0 ? marketsPayload : undefined 
+        },
         { headers: authHeaders }
       );
       toast.success(`Match created in ${form.league} — ${form.finalHomeScore}-${form.finalAwayScore}`);
@@ -172,6 +206,7 @@ export default function AdminPanel() {
         ...form, homeTeam: '', awayTeam: '', startsAt: next,
         winner: 'HOME', margin: '1', finalHomeScore: '1', finalAwayScore: '0',
         odds: { ...DEFAULT_ODDS },
+        customMarkets: [], // Reset markets
       });
       loadMatches();
     } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }
@@ -214,7 +249,6 @@ export default function AdminPanel() {
     } catch (e) { toast.error('Failed to update odds'); }
   };
 
-  // NEW: bulk-update every market
   const updateMarkets = async (match, marketsPayload) => {
     try {
       await api.put(
@@ -379,6 +413,30 @@ export default function AdminPanel() {
                   </button>
                 </div>
 
+                {/* === NEW CUSTOM MARKETS SECTION === */}
+                <div className="md:col-span-2 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="text-xs text-gray-400 font-medium">Custom Markets (Optional)</div>
+                    <button type="button" onClick={addCustomMarket} className="text-[11px] px-2 py-1 bg-[#2e7d32]/20 text-[#2e7d32] rounded hover:bg-[#2e7d32]/30 transition-colors">
+                      + Add Market
+                    </button>
+                  </div>
+                  {form.customMarkets.length === 0 ? (
+                    <div className="text-xs text-gray-500 italic">Leave empty to auto-generate standard markets based on Base 1X2 odds.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {form.customMarkets.map((m, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <input placeholder="Name (e.g. 1, X, 2, Over 2.5)" value={m.name} onChange={e => updateCustomMarket(idx, 'name', e.target.value)} className="flex-1 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
+                          <input type="number" step="0.01" placeholder="Odds" value={m.odds} onChange={e => updateCustomMarket(idx, 'odds', e.target.value)} className="w-24 px-2 py-1 bg-[#2a2f3f] rounded text-white text-xs" />
+                          <button type="button" onClick={() => removeCustomMarket(idx)} className="px-2 bg-red-600/20 text-red-400 rounded text-xs hover:bg-red-600/40">Del</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* ================================ */}
+
                 <div className="md:col-span-2 grid grid-cols-2 gap-4 p-3 bg-[#0f1219] rounded-lg border border-[#2a3042]">
                   <div>
                     <label className="text-xs text-gray-400 block mb-1">Final Home Score</label>
@@ -466,7 +524,6 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
   const [startsAt, setStartsAt] = useState(toLocalInput(match.startsAt));
   const [showMarkets, setShowMarkets] = useState(false);
 
-  // Editable copy of every market
   const [allMarkets, setAllMarkets] = useState(() =>
     (match.markets || []).map(m => ({ name: m.name, odds: String(m.odds), isActive: m.isActive !== false }))
   );
@@ -502,7 +559,6 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
   const timeDirty = startsAt !== toLocalInput(match.startsAt);
   const canEditTime = match.status === 'SCHEDULED';
 
-  // Group markets for display
   const grouped = {};
   for (const m of allMarkets) {
     const g = marketGroup(m.name);
@@ -646,7 +702,7 @@ function MatchRow({ match, onUpdate, onUpdateTime, onDelete, onPredict, onSetTar
 
           {allMarkets.length === 0 && (
             <div className="text-center text-gray-500 text-xs py-4">
-              This match has no markets. It was probably created before the extended board was added. Delete it and create a new one.
+              This match has no markets.
             </div>
           )}
         </div>

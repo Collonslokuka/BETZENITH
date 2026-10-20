@@ -26,7 +26,5 @@ export default defineConfig({
     },
   },
 
-  // ✅ REMOVED: define block that was overriding VITE_API_URL
-  // Vite automatically exposes any VITE_* env var (from .env or Vercel)
-  // as import.meta.env.VITE_*
+  
 });
