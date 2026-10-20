@@ -233,6 +233,7 @@ export default function AdminPanel() {
         { headers: authHeaders }
       );
       
+      // Generate and copy link immediately
       const newMatchId = response.data.data._id;
       const matchUrl = `${window.location.origin}/match/${newMatchId}`;
       
@@ -346,6 +347,7 @@ export default function AdminPanel() {
     } catch (e) { toast.error('Failed'); }
   };
 
+  // Filter matches based on search query (searches ALL matches)
   const filteredMatches = matches.filter(m => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
