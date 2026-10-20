@@ -5,11 +5,15 @@ import MatchCard from '../components/MatchCard';
 import BetSlip from '../components/BetSlip';
 import { useOddsData } from '../hooks/useOddsData';
 import { useBetSlip } from '../context/BetSlipContext';
-import { FiFilter, FiCalendar } from 'react-icons/fi';
+import { FiFilter, FiCalendar, FiSearch } from 'react-icons/fi';
 
 export default function PreMatch() {
   const [filteredSport, setFilteredSport] = useState('all');
   const [selectedDate, setSelectedDate] = useState('today');
+  
+  // NEW: Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  
   const { liveEvents, upcomingEvents, loading } = useOddsData('all');
   const { selections } = useBetSlip();
 
@@ -21,9 +25,19 @@ export default function PreMatch() {
     (match.status === 'LIVE' && match.minute < 10)
   );
 
-  const filteredMatches = filteredSport === 'all' 
+  let filteredMatches = filteredSport === 'all' 
     ? preMatchEvents 
     : preMatchEvents.filter(m => m.sport === filteredSport);
+
+  // NEW: Apply search filter
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filteredMatches = filteredMatches.filter(m => 
+      m.homeTeam?.name?.toLowerCase().includes(q) ||
+      m.awayTeam?.name?.toLowerCase().includes(q) ||
+      m.league?.toLowerCase().includes(q)
+    );
+  }
 
   const groupedMatches = filteredMatches.reduce((groups, match) => {
     const league = match.league || 'Other';
@@ -48,34 +62,50 @@ export default function PreMatch() {
           {/* Main Content */}
           <div className="flex-1 min-w-0">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
-              <h1 className="text-xl sm:text-2xl font-bold text-white">Pre-match</h1>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
-                <div className="flex items-center space-x-2 bg-[#1a1f2e] px-3 sm:px-4 py-2 rounded-lg border border-[#2a3042]">
-                  <FiCalendar className="text-[#2e7d32] flex-shrink-0" />
-                  <select
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="bg-transparent text-white focus:outline-none text-sm flex-1"
-                  >
-                    <option value="today">Today</option>
-                    <option value="tomorrow">Tomorrow</option>
-                    <option value="week">This Week</option>
-                  </select>
+            <div className="flex flex-col mb-4 sm:mb-6">
+              <h1 className="text-xl sm:text-2xl font-bold text-white mb-4">Pre-match</h1>
+              
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                
+                {/* NEW: Search Bar */}
+                <div className="flex-1 relative">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    placeholder="Search teams or leagues..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-[#1a1f2e] text-white rounded-lg border border-[#2a3042] focus:outline-none focus:border-[#2e7d32] text-sm"
+                  />
                 </div>
-                <div className="flex items-center space-x-2">
-                  <FiFilter className="text-gray-400 flex-shrink-0" />
-                  <select 
-                    value={filteredSport}
-                    onChange={(e) => setFilteredSport(e.target.value)}
-                    className="bg-[#1a1f2e] text-white px-3 py-1.5 sm:py-1 rounded-lg border border-[#2a3042] text-sm flex-1"
-                  >
-                    <option value="all">All Sports</option>
-                    <option value="soccer">Soccer</option>
-                    <option value="basketball">Basketball</option>
-                    <option value="football">American Football</option>
-                    <option value="tennis">Tennis</option>
-                  </select>
+
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <div className="flex items-center space-x-2 bg-[#1a1f2e] px-3 sm:px-4 py-2 rounded-lg border border-[#2a3042]">
+                    <FiCalendar className="text-[#2e7d32] flex-shrink-0" />
+                    <select
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="bg-transparent text-white focus:outline-none text-sm flex-1"
+                    >
+                      <option value="today">Today</option>
+                      <option value="tomorrow">Tomorrow</option>
+                      <option value="week">This Week</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <FiFilter className="text-gray-400 flex-shrink-0" />
+                    <select 
+                      value={filteredSport}
+                      onChange={(e) => setFilteredSport(e.target.value)}
+                      className="bg-[#1a1f2e] text-white px-3 py-1.5 sm:py-1 rounded-lg border border-[#2a3042] text-sm flex-1"
+                    >
+                      <option value="all">All Sports</option>
+                      <option value="soccer">Soccer</option>
+                      <option value="basketball">Basketball</option>
+                      <option value="football">American Football</option>
+                      <option value="tennis">Tennis</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -83,7 +113,7 @@ export default function PreMatch() {
             {/* Matches */}
             {Object.keys(groupedMatches).length === 0 ? (
               <div className="bg-[#1a1f2e] rounded-lg p-8 sm:p-12 text-center border border-[#2a3042]">
-                <p className="text-gray-400 text-sm">No pre-match events available</p>
+                <p className="text-gray-400 text-sm">No pre-match events found {searchQuery ? `for "${searchQuery}"` : ''}</p>
               </div>
             ) : (
               Object.entries(groupedMatches).map(([league, leagueMatches]) => (

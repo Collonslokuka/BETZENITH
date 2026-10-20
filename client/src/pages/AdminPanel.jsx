@@ -29,10 +29,6 @@ const LEAGUES = [
 
 const DEFAULT_ODDS = { home: '1.90', draw: '3.40', away: '3.80' };
 
-// ==========================================
-// DROPDOWN OPTIONS FOR CUSTOM MARKETS
-// Matching your Pawacash screenshots perfectly
-// ==========================================
 const MARKET_OPTIONS = [
   { label: 'Match Winner (1X2)', options: ['1', 'X', '2', 'Home', 'Away'] },
   { label: 'Double Chance (DC)', options: ['Double Chance 1X', 'Double Chance 12', 'Double Chance X2', 'DNB 1', 'DNB 2'] },
@@ -66,7 +62,6 @@ const MARKET_OPTIONS = [
   { label: 'Others', options: ['Straight Sets', '1st Goal 1', '1st Goal 2', '1st Goal None'] }
 ];
 
-// ─── market grouping for the editor ───
 const WINNER       = ['1', 'X', '2', 'Home', 'Away'];
 const isDC         = n => n.startsWith('Double Chance');
 const isBTTS       = n => n === 'BTTS' || n === 'BTTS No';
@@ -130,6 +125,8 @@ export default function AdminPanel() {
   const [tab, setTab] = useState('matches');
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
+  
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [form, setForm] = useState(() => {
     const d = new Date(Date.now() + 10 * 60 * 1000);
@@ -196,7 +193,7 @@ export default function AdminPanel() {
 
   const loadMatches = async () => {
     try {
-      const r = await api.get('/admin-panel/matches?limit=100', { headers: authHeaders });
+      const r = await api.get('/admin-panel/matches?limit=500', { headers: authHeaders });
       setMatches(r.data.data || []);
     } catch (e) { toast.error('Failed to load'); }
   };
@@ -225,7 +222,7 @@ export default function AdminPanel() {
     if (!startsAtUTC) return toast.error('Invalid start time');
 
     try {
-      await api.post(
+      const response = await api.post(
         '/admin-panel/matches',
         { 
           ...form, 
@@ -235,7 +232,17 @@ export default function AdminPanel() {
         },
         { headers: authHeaders }
       );
-      toast.success(`Match created in ${form.league} — ${form.finalHomeScore}-${form.finalAwayScore}`);
+      
+      const newMatchId = response.data.data._id;
+      const matchUrl = `${window.location.origin}/match/${newMatchId}`;
+      
+      try {
+        await navigator.clipboard.writeText(matchUrl);
+        toast.success(`Match created! Link copied to clipboard.`, { duration: 6000 });
+      } catch (err) {
+        toast.success(`Match created! Link: ${matchUrl}`, { duration: 8000 });
+      }
+
       const next = toLocalInput(new Date(Date.now() + 10 * 60 * 1000));
       setForm({
         ...form, homeTeam: '', awayTeam: '', startsAt: next,
@@ -338,6 +345,16 @@ export default function AdminPanel() {
       loadPredictions();
     } catch (e) { toast.error('Failed'); }
   };
+
+  const filteredMatches = matches.filter(m => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      m.homeTeam?.name?.toLowerCase().includes(q) ||
+      m.awayTeam?.name?.toLowerCase().includes(q) ||
+      m.league?.toLowerCase().includes(q)
+    );
+  });
 
   if (!authed) {
     return (
@@ -461,8 +478,6 @@ export default function AdminPanel() {
                     <div className="space-y-2">
                       {form.customMarkets.map((m, idx) => (
                         <div key={idx} className="flex gap-2">
-                          
-                          {/* DROPDOWN SELECT INSTEAD OF TEXT INPUT */}
                           <select 
                             value={m.name} 
                             onChange={e => updateCustomMarket(idx, 'name', e.target.value)} 
@@ -502,9 +517,20 @@ export default function AdminPanel() {
             </div>
 
             <div className="bg-[#1a1f2e] rounded-xl p-6 border border-[#2a3042]">
-              <h2 className="text-xl font-bold text-white mb-4">Recent Matches ({matches.length})</h2>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                <h2 className="text-xl font-bold text-white">Recent Matches ({filteredMatches.length})</h2>
+                
+                <input 
+                  type="text" 
+                  placeholder="Search any team or league..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full sm:w-72 px-4 py-2 bg-[#0f1219] border border-[#2a3042] rounded-lg text-white text-sm focus:outline-none focus:border-[#2e7d32]"
+                />
+              </div>
+              
               <div className="space-y-3 max-h-[800px] overflow-y-auto">
-                {matches.map(m => (
+                {filteredMatches.map(m => (
                   <MatchRow
                     key={m._id}
                     match={m}
@@ -518,6 +544,9 @@ export default function AdminPanel() {
                     onUpdateMarkets={updateMarkets}
                   />
                 ))}
+                {filteredMatches.length === 0 && (
+                  <div className="text-center text-gray-500 py-8">No matches found matching "{searchQuery}"</div>
+                )}
               </div>
             </div>
           </>

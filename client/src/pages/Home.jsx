@@ -10,7 +10,7 @@ import {
   FiChevronLeft, FiChevronRight, FiMail, FiPhone, FiMapPin,
   FiTwitter, FiFacebook, FiInstagram, FiLinkedin, FiYoutube,
   FiHome, FiCalendar, FiTv, FiLock, FiChevronLeft as FiChevronLeftIcon,
-  FiChevronRight as FiChevronRightIcon
+  FiChevronRight as FiChevronRightIcon, FiSearch
 } from 'react-icons/fi';
 import {
   GiSoccerBall, GiBasketballBall, GiAmericanFootballHelmet, GiBaseballBat,
@@ -125,6 +125,9 @@ export default function Home() {
   const [upcomingMatches, setUpcomingMatches] = useState([]);
   const [finishedMatches, setFinishedMatches] = useState([]);
   const [selectedMatchType, setSelectedMatchType] = useState('upcoming');
+  
+  // NEW: Search State
+  const [searchQuery, setSearchQuery] = useState('');
 
   const topLeaguesScrollRef = useRef(null);
   const royalHotsScrollRef = useRef(null);
@@ -214,6 +217,17 @@ export default function Home() {
     }
   };
 
+  // NEW: Filter Matches
+  const getFilteredMatches = (matchesArray) => {
+    if (!searchQuery) return matchesArray;
+    const q = searchQuery.toLowerCase();
+    return matchesArray.filter(m => 
+      m.homeTeam?.name?.toLowerCase().includes(q) ||
+      m.awayTeam?.name?.toLowerCase().includes(q) ||
+      m.league?.toLowerCase().includes(q)
+    );
+  };
+
   const slides = [
     {
       id: 1,
@@ -300,6 +314,11 @@ export default function Home() {
     { name: 'Analytics', icon: <FiTrendingUp className="text-[#2e7d32]" />, path: '/analytics' },
     { name: 'Responsible Gambling', icon: <FiShield className="text-[#2e7d32]" />, path: '/responsible-gaming' },
   ];
+
+  // NEW: Apply filters to active tab
+  const filteredLive = getFilteredMatches(liveMatches);
+  const filteredUpcoming = getFilteredMatches(upcomingMatches);
+  const filteredFinished = getFilteredMatches(finishedMatches);
 
   return (
     <div className="min-h-screen bg-[#0a0c14]" style={{ overscrollBehavior: 'none' }}>
@@ -485,55 +504,68 @@ export default function Home() {
 
         {/* Match Sections */}
         <div className="max-w-5xl mx-auto mt-4">
+          
+          {/* NEW: SEARCH BAR */}
+          <div className="relative mb-4">
+            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+            <input
+              type="text"
+              placeholder="Search matches, teams or leagues..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-[#0f1219] border border-[#2a3042] text-white rounded-xl focus:outline-none focus:border-[#2e7d32] shadow-sm"
+            />
+          </div>
+
           <div className="flex gap-1 sm:gap-2 mb-4 bg-[#0f1219] p-1.5 sm:p-2 rounded-lg border border-[#2a3042]">
             <button
               onClick={() => setSelectedMatchType('live')}
               className={`flex-1 px-1 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-medium transition-colors ${selectedMatchType === 'live' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
-              🔴 LIVE ({liveMatches.length})
+              🔴 LIVE ({filteredLive.length})
             </button>
             <button
               onClick={() => setSelectedMatchType('upcoming')}
               className={`flex-1 px-1 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-medium transition-colors ${selectedMatchType === 'upcoming' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
-              📅 SCHEDULED ({upcomingMatches.length})
+              📅 SCHEDULED ({filteredUpcoming.length})
             </button>
             <button
               onClick={() => setSelectedMatchType('finished')}
               className={`flex-1 px-1 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-medium transition-colors ${selectedMatchType === 'finished' ? 'bg-[#2e7d32] text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1f2e]'}`}
             >
-              🏁 FINISHED ({finishedMatches.length})
+              🏁 FINISHED ({filteredFinished.length})
             </button>
           </div>
 
           <div className="space-y-3 sm:space-y-4">
-            {selectedMatchType === 'live' && liveMatches.length === 0 && (
+            {selectedMatchType === 'live' && filteredLive.length === 0 && (
               <div className="bg-[#1a1f2e] rounded-lg p-6 sm:p-8 text-center border border-[#2a3042]">
-                <p className="text-gray-400 text-sm">No live matches at the moment</p>
-                <p className="text-xs text-gray-500 mt-2">Check back soon for live action!</p>
+                <p className="text-gray-400 text-sm">No live matches found</p>
+                <p className="text-xs text-gray-500 mt-2">Try adjusting your search</p>
               </div>
             )}
-            {selectedMatchType === 'live' && liveMatches.map(match => (
+            {selectedMatchType === 'live' && filteredLive.map(match => (
               <MatchCard key={match._id} match={match} />
             ))}
             
-            {selectedMatchType === 'upcoming' && upcomingMatches.length === 0 && (
+            {selectedMatchType === 'upcoming' && filteredUpcoming.length === 0 && (
               <div className="bg-[#1a1f2e] rounded-lg p-6 sm:p-8 text-center border border-[#2a3042]">
-                <p className="text-gray-400 text-sm">No scheduled matches available</p>
-                <p className="text-xs text-gray-500 mt-2">New matches will appear here soon</p>
+                <p className="text-gray-400 text-sm">No scheduled matches found</p>
+                <p className="text-xs text-gray-500 mt-2">Try adjusting your search</p>
               </div>
             )}
-            {selectedMatchType === 'upcoming' && upcomingMatches.map(match => (
+            {selectedMatchType === 'upcoming' && filteredUpcoming.map(match => (
               <MatchCard key={match._id} match={match} />
             ))}
             
-            {selectedMatchType === 'finished' && finishedMatches.length === 0 && (
+            {selectedMatchType === 'finished' && filteredFinished.length === 0 && (
               <div className="bg-[#1a1f2e] rounded-lg p-6 sm:p-8 text-center border border-[#2a3042]">
-                <p className="text-gray-400 text-sm">No finished matches</p>
-                <p className="text-xs text-gray-500 mt-2">Check back after matches are completed</p>
+                <p className="text-gray-400 text-sm">No finished matches found</p>
+                <p className="text-xs text-gray-500 mt-2">Try adjusting your search</p>
               </div>
             )}
-            {selectedMatchType === 'finished' && finishedMatches.map(match => (
+            {selectedMatchType === 'finished' && filteredFinished.map(match => (
               <MatchCard key={match._id} match={match} />
             ))}
           </div>
