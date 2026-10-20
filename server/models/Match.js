@@ -2,15 +2,75 @@
 const mongoose = require('mongoose');
 
 const BETTING_CLOSE_MINUTES = {
-  soccer: 85, basketball: 45, football: 55, baseball: 8, hockey: 55,
-  tennis: 4, mma: 4, boxing: 11, golf: 3, cricket: 18, rugby: 75, f1: 50, esports: 4,
+  soccer: 85,
+  basketball: 45,
+  football: 55,
+  baseball: 8,
+  hockey: 55,
+  tennis: 4,
+  mma: 4,
+  boxing: 11,
+  golf: 3,
+  cricket: 18,
+  rugby: 75,
+  f1: 50,
+  esports: 4,
 };
 
-const CLOSED_STATUSES = ['FINISHED', 'CANCELLED', 'POSTPONED', 'ABANDONED', 'SUSPENDED'];
-const IN_PLAY_STATUSES = ['FIRST_HALF', 'LIVE', 'HALFTIME', 'SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'];
+const CLOSED_STATUSES = [
+  'FINISHED',
+  'CANCELLED',
+  'POSTPONED',
+  'ABANDONED',
+  'SUSPENDED',
+];
 
 const marketSchema = new mongoose.Schema({
-  name: { type: String, required: true, index: true },
+  name: {
+    type: String,
+    required: true,
+    enum: [
+      '1', 'X', '2',
+      'Home', 'Away',
+      'Over 0.5', 'Over 1.5', 'Over 2.5', 'Under 2.5',
+      'Over 8.5', 'Under 8.5',
+      'Over 5.5', 'Under 5.5',
+      'Over 45.5', 'Under 45.5',
+      'Over 210.5', 'Under 210.5',
+      'Over 220.5', 'Under 220.5',
+      'BTTS', 'BTTS No',
+      'Double Chance 1X', 'Double Chance 12', 'Double Chance X2',
+      'Straight Sets',
+      '1 & Over 2.5', '1 & Under 2.5',
+      'X & Over 2.5', 'X & Under 2.5',
+      '2 & Over 2.5', '2 & Under 2.5',
+      '0:0', '0:1', '0:2', '0:3', '0:4',
+      '1:0', '1:1', '1:2', '1:3', '1:4',
+      '2:0', '2:1', '2:2', '2:3', '2:4',
+      '3:0', '3:1', '3:2', '3:3', '3:4',
+      '4:0', '4:1', '4:2', '4:3', '4:4',
+      'Under 0.5', 'Under 1.5', 'Over 3.5', 'Under 3.5',
+      'Over 4.5', 'Under 4.5',
+      '1 & BTTS', '1 & BTTS No',
+      'X & BTTS', 'X & BTTS No',
+      '2 & BTTS', '2 & BTTS No',
+      'Other',
+      '1/1', '1/X', '1/2',
+      'X/1', 'X/X', 'X/2',
+      '2/1', '2/X', '2/2',
+      '1H 1', '1H X', '1H 2',
+      '1H Over 0.5', '1H Under 0.5',
+      '1H Over 1.5', '1H Under 1.5',
+      '1H Over 2.5', '1H Under 2.5',
+      '1H BTTS', '1H BTTS No',
+      '1H 0:0', '1H 0:1', '1H 0:2',
+      '1H 1:0', '1H 1:1', '1H 1:2',
+      '1H 2:0', '1H 2:1', '1H 2:2',
+      '1H Other',
+      '1st Goal 1', '1st Goal 2', '1st Goal None',
+      'DNB 1', 'DNB 2',
+    ],
+  },
   odds: { type: Number, required: true, min: 1.01, max: 1000 },
   previousOdds: Number,
   oddsHistory: [
@@ -71,7 +131,6 @@ const matchSchema = new mongoose.Schema(
     time: String,
     venue: String,
     startsAt: { type: Date, index: true },
-    timezone: { type: String, default: 'Africa/Nairobi', index: true },
     matchDuration: { type: Number, default: 90 },
 
     score: {
@@ -90,12 +149,14 @@ const matchSchema = new mongoose.Schema(
     },
     minute: { type: Number, default: 0 },
     addedTime: Number,
+    addedTime1H: Number,
+    addedTime2H: Number,
 
     events: [
       {
         type: {
           type: String,
-          enum: ['GOAL', 'PENALTY', 'RED_CARD', 'YELLOW_CARD', 'SUBSTITUTION', 'INJURY', 'VAR'],
+          enum: ['GOAL', 'PENALTY', 'RED_CARD', 'YELLOW_CARD', 'SUBSTITUTION', 'INJURY', 'VAR', 'FOUL', 'TIMEOUT', 'KNOCKDOWN', 'POINT'],
         },
         minute: Number,
         addedTime: Number,
@@ -136,9 +197,6 @@ const matchSchema = new mongoose.Schema(
       homeScore: { type: Number, default: null },
       awayScore: { type: Number, default: null },
     },
-    lastUpdated: Date,
-    statusTimeline: [{ status: String, timestamp: Date }],
-
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },
@@ -167,10 +225,11 @@ matchSchema.methods.isBettingAvailable = function () {
   const sport = (this.sport || 'soccer').toLowerCase();
   const cutoff = BETTING_CLOSE_MINUTES[sport] ?? 85;
   const minute = this.minute || 0;
-  const maxDuration = this.matchDuration || 90;
 
-  if (IN_PLAY_STATUSES.includes(this.status) && minute >= cutoff) return false;
-  if (IN_PLAY_STATUSES.includes(this.status) && minute >= maxDuration) return false;
+  if (['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && minute >= cutoff) return false;
+
+  const maxDuration = this.matchDuration || 90;
+  if (['LIVE', 'SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && minute >= maxDuration) return false;
 
   return true;
 };
@@ -181,7 +240,8 @@ matchSchema.methods.getBettingClosedReason = function () {
 
   const sport = (this.sport || 'soccer').toLowerCase();
   const cutoff = BETTING_CLOSE_MINUTES[sport] ?? 85;
-  if (IN_PLAY_STATUSES.includes(this.status) && (this.minute || 0) >= cutoff) {
+
+  if (['SECOND_HALF', 'EXTRA_TIME', 'PENALTIES'].includes(this.status) && (this.minute || 0) >= cutoff) {
     return `Betting closed — match is in its final stages (${this.minute}')`;
   }
   return 'Betting is not available';
@@ -195,9 +255,6 @@ matchSchema.methods.updateOdds = async function (marketIndex, newOdds, reason = 
   if (this.status === 'FINISHED') throw new Error('Cannot update odds for finished match');
   const market = this.markets[marketIndex];
   if (!market) throw new Error('Market not found');
-  if (!Number.isFinite(newOdds) || newOdds < 1.01 || newOdds > 1000) {
-    throw new Error('Invalid odds — must be between 1.01 and 1000');
-  }
 
   if (!market.oddsHistory) market.oddsHistory = [];
   market.oddsHistory.push({ odds: market.odds, timestamp: new Date(), reason });
@@ -210,10 +267,12 @@ matchSchema.methods.updateOdds = async function (marketIndex, newOdds, reason = 
 
 matchSchema.methods.addEvent = async function (eventData) {
   if (!this.events) this.events = [];
-  if (!this.score) this.score = { home: 0, away: 0 };
   if (eventData.type === 'GOAL') {
-    if (eventData.team === 'home') this.score.home = (this.score.home || 0) + 1;
-    else this.score.away = (this.score.away || 0) + 1;
+    if (eventData.team === 'home') {
+      this.score.home += 1;
+    } else {
+      this.score.away += 1;
+    }
     eventData.homeScore = this.score.home;
     eventData.awayScore = this.score.away;
   }
@@ -231,7 +290,7 @@ matchSchema.methods.updateLiveStats = async function (stats) {
 };
 
 matchSchema.methods.getAvailableMarkets = function () {
-  return this.markets.filter((m) => m.isActive && !m.suspended && m.odds >= 1.01);
+  return this.markets.filter((m) => m.isActive && !m.suspended);
 };
 
 matchSchema.virtual('volumeByMarket').get(function () {

@@ -11,9 +11,6 @@ const {
   abbreviation,
 } = require('../data/leagueRegistry');
 
-// ============================================================
-//  CONFIG
-// ============================================================
 const LIVE_TICK_MS = 30 * 1000;
 const ROTATION_TICK_MS = 60 * 60 * 1000;
 const KEEP_FINISHED_HOURS = 48;
@@ -53,9 +50,11 @@ const SEED_FINISHED_PER_SPORT = {
   mma: 25,
 };
 
-// ============================================================
-//  SERVICE
-// ============================================================
+function minutesPerTick(sport) {
+  const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+  return Math.max(1, Math.ceil(dur.regular / 45));
+}
+
 class AIMatchService {
   constructor() {
     this.liveTimer = null;
@@ -118,13 +117,10 @@ class AIMatchService {
 
     try {
       await this.archiveOldFinished();
-
       await FixturesCoordinator.fetchAll().catch(err =>
         console.error('📡 Coordinator error:', err.message)
       );
-
       await this.topUpUpcoming();
-
       console.log('✅ rotation complete');
     } catch (err) {
       console.error('❌ rotate error:', err.message);
@@ -146,6 +142,17 @@ class AIMatchService {
       match.score = { home: 0, away: 0 };
       match.lastUpdated = now;
       match.events = [];
+      
+      // Initialize added time
+      const sport = match.sport || 'soccer';
+      const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+      if (dur.addedTime1H) {
+        match.addedTime1H = Math.floor(Math.random() * (dur.addedTime1H[1] - dur.addedTime1H[0] + 1)) + dur.addedTime1H[0];
+      }
+      if (dur.addedTime2H) {
+        match.addedTime2H = Math.floor(Math.random() * (dur.addedTime2H[1] - dur.addedTime2H[0] + 1)) + dur.addedTime2H[0];
+      }
+      
       await match.save();
     }
 
@@ -157,148 +164,146 @@ class AIMatchService {
       status: { $in: ['LIVE', 'FIRST_HALF', 'SECOND_HALF', 'HALFTIME'] },
     });
 
-    const now = Date.now();
-
     for (const match of live) {
       const sport = match.sport || 'soccer';
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
       const weights = SPORT_SCORE_WEIGHTS[sport] || SPORT_SCORE_WEIGHTS.soccer;
 
-      // ── FIX: derive minute from real elapsed wall-clock time ──
-      const startsAtMs = new Date(match.startsAt).getTime();
-      if (!startsAtMs || now < startsAtMs) continue;
+      // Fallback for missing added time
+      if (!match.addedTime1H && dur.addedTime1H) {
+        match.addedTime1H = Math.floor(Math.random() * (dur.addedTime1H[1] - dur.addedTime1H[0] + 1)) + dur.addedTime1H[0];
+      }
+      if (!match.addedTime2H && dur.addedTime2H) {
+        match.addedTime2H = Math.floor(Math.random() * (dur.addedTime2H[1] - dur.addedTime2H[0] + 1)) + dur.addedTime2H[0];
+      }
 
-      const elapsed = Math.floor((now - startsAtMs) / 60000);
-      const newMinute = Math.min(elapsed, dur.regular);
+      const tick = minutesPerTick(sport);
+      let currentMinute = match.minute || 0;
 
-      if (newMinute === match.minute) continue;
+      if (match.status === 'HALFTIME') {
+        match.status = 'SECOND_HALF';
+        currentMinute = dur.halftime;
+        match.minute = currentMinute;
+      } else if (match.status === 'FIRST_HALF' || match.status === 'LIVE') {
+        currentMinute += tick;
+        const end1H = dur.halftime + (match.addedTime1H || 0);
+        
+        if (currentMinute >= end1H) {
+          match.status = 'HALFTIME';
+          match.minute = dur.halftime;
+          match.addedTime = match.addedTime1H;
+        } else {
+          match.minute = currentMinute;
+          match.addedTime = currentMinute > dur.halftime ? currentMinute - dur.halftime : 0;
+        }
+      } else if (match.status === 'SECOND_HALF') {
+        currentMinute += tick;
+        const end2H = dur.regular + (match.addedTime2H || 0);
+        
+        if (currentMinute >= end2H) {
+          match.status = 'FINISHED';
+          match.minute = dur.regular;
+          match.addedTime = match.addedTime2H;
+          match.finishedAt = new Date();
+          
+          // ENFORCE SCRIPTED OUTCOME
+          if (match.source === 'admin-manual' && match.scriptedOutcome?.homeScore !== null && match.scriptedOutcome?.homeScore !== undefined) {
+            match.score = {
+              home: match.scriptedOutcome.homeScore || 0,
+              away: match.scriptedOutcome.awayScore || 0,
+            };
+          }
 
-      match.minute = newMinute;
+          match.result = {
+            winner: match.score.home > match.score.away ? 'HOME' : match.score.away > match.score.home ? 'AWAY' : 'DRAW',
+            score: match.score,
+            isSettled: true,
+            settledAt: new Date(),
+          };
 
-      if (newMinute < dur.halftime) match.status = 'FIRST_HALF';
-      else if (newMinute === dur.halftime) match.status = 'HALFTIME';
-      else if (newMinute < dur.regular) match.status = 'SECOND_HALF';
-      else match.status = 'SECOND_HALF';
+          await match.save();
 
-      // ── SCRIPTED OUTCOME (admin-created matches) ──
-      if (
-        match.source === 'admin-manual' &&
-        match.scriptedOutcome?.homeScore != null &&
-        match.scriptedOutcome?.awayScore != null
-      ) {
-        const targetHome = match.scriptedOutcome.homeScore || 0;
-        const targetAway = match.scriptedOutcome.awayScore || 0;
+          const io = global.io;
+          if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
 
-        const schedule = goalScheduleForMatch(match._id, targetHome, targetAway);
+          try {
+            const { settleBetsForMatch } = require('./betSettlementService');
+            const result = await settleBetsForMatch(match._id, match, global.io);
+            if (result?.settled > 0) {
+              console.log(`💰 Settled ${result.settled} bets for match ${match._id}`);
+            }
+          } catch (err) {
+            console.error('[ai-sim] settle failed for', match._id, err.message);
+          }
+          continue;
+        } else {
+          match.minute = currentMinute;
+          match.addedTime = currentMinute > dur.regular ? currentMinute - dur.regular : 0;
+        }
+      }
 
-        let h = 0, a = 0;
-        for (const g of schedule) {
-          if (g.minute <= newMinute) {
-            if (g.team === 'home') h++;
-            else a++;
+      if (match.status !== 'HALFTIME' && match.status !== 'FINISHED') {
+        if (match.source === 'admin-manual' && match.scriptedOutcome?.homeScore !== null && match.scriptedOutcome?.homeScore !== undefined) {
+          const targetHome = match.scriptedOutcome.homeScore || 0;
+          const targetAway = match.scriptedOutcome.awayScore || 0;
+          const schedule = goalScheduleForMatch(match._id, targetHome, targetAway);
+
+          let h = 0, a = 0;
+          for (const g of schedule) {
+            if (g.minute <= match.minute) {
+              if (g.team === 'home') h++;
+              else a++;
+            }
+          }
+
+          if (h !== (match.score.home || 0)) {
+            match.events.push({ type: 'GOAL', minute: match.minute, team: 'home', homeScore: h, awayScore: a, at: new Date() });
+          }
+          if (a !== (match.score.away || 0)) {
+            match.events.push({ type: 'GOAL', minute: match.minute, team: 'away', homeScore: h, awayScore: a, at: new Date() });
+          }
+          match.score = { home: h, away: a };
+
+        } else {
+          if (sport === 'basketball') {
+            const homePts = Math.random() < 0.7 ? 2 + Math.floor(Math.random() * 3) : 0;
+            const awayPts = Math.random() < 0.65 ? 2 + Math.floor(Math.random() * 3) : 0;
+            match.score.home = Math.min((match.score.home || 0) + homePts, weights.maxScore);
+            match.score.away = Math.min((match.score.away || 0) + awayPts, weights.maxScore);
+          } else if (sport === 'tennis' || sport === 'mma') {
+            if (Math.random() < 0.05) {
+              if (Math.random() < 0.5) match.score.home = Math.min((match.score.home || 0) + 1, sport === 'tennis' ? 3 : 1);
+              else match.score.away = Math.min((match.score.away || 0) + 1, sport === 'tennis' ? 3 : 1);
+            }
+          } else {
+            if (Math.random() < weights.homeGoalRate * tick / 30) {
+              match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
+              match.events.push({ type: 'GOAL', minute: match.minute, team: 'home', homeScore: match.score.home, awayScore: match.score.away, at: new Date() });
+            }
+            if (Math.random() < weights.awayGoalRate * tick / 30) {
+              match.score.away = Math.min((match.score.away || 0) + 1, weights.maxScore);
+              match.events.push({ type: 'GOAL', minute: match.minute, team: 'away', homeScore: match.score.home, awayScore: match.score.away, at: new Date() });
+            }
           }
         }
 
-        if (h !== (match.score.home || 0)) {
-          match.events = match.events || [];
-          match.events.push({
-            type: 'GOAL', minute: newMinute, team: 'home',
-            homeScore: h, awayScore: a,
-            at: new Date(),
-          });
-        }
-        if (a !== (match.score.away || 0)) {
-          match.events = match.events || [];
-          match.events.push({
-            type: 'GOAL', minute: newMinute, team: 'away',
-            homeScore: h, awayScore: a,
-            at: new Date(),
-          });
-        }
-
-        match.score = { home: h, away: a };
-
-        if (newMinute >= 1 && Math.random() < 0.015) {
-          const isRed = Math.random() < 0.05;
-          match.events = match.events || [];
-          match.events.push({
-            type: isRed ? 'RED_CARD' : 'YELLOW_CARD',
-            minute: newMinute,
-            team: Math.random() < 0.5 ? 'home' : 'away',
-            player: randomPlayerName(),
-          });
-        }
-
-        match.lastUpdated = new Date();
-        await match.save();
-
-        const io = global.io;
-        if (io) {
-          io.to(`match-${match._id}`).emit('match-update', {
-            _id: match._id,
-            score: match.score,
-            minute: match.minute,
-            status: match.status,
-            league: match.league,
-            lastUpdated: match.lastUpdated,
-          });
-        }
-        continue;
-      }
-      // ── END SCRIPTED OUTCOME ──
-
-      const isBasketball = sport === 'basketball';
-      const isTennis = sport === 'tennis';
-      const isMMA = sport === 'mma';
-
-      if (isBasketball) {
-        const homePts = Math.random() < 0.7 ? 2 + Math.floor(Math.random() * 3) : 0;
-        const awayPts = Math.random() < 0.65 ? 2 + Math.floor(Math.random() * 3) : 0;
-        match.score.home = Math.min((match.score.home || 0) + homePts, weights.maxScore);
-        match.score.away = Math.min((match.score.away || 0) + awayPts, weights.maxScore);
-      } else if (isTennis) {
-        if (Math.random() < 0.05) {
-          const homeWins = Math.random() < 0.5;
-          if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 3);
-          else match.score.away = Math.min((match.score.away || 0) + 1, 3);
-        }
-      } else if (isMMA) {
+        // Sports events (Cards, Fouls, Timeouts, Knockdowns)
         if (Math.random() < 0.08) {
-          const homeWins = Math.random() < 0.5;
-          if (homeWins) match.score.home = Math.min((match.score.home || 0) + 1, 1);
-          else match.score.away = Math.min((match.score.away || 0) + 1, 1);
+          const isSoccer = sport === 'soccer';
+          const isBasketball = sport === 'basketball';
+          const isMMA = sport === 'mma';
+          
+          if (isSoccer) {
+            const events = ['YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION', 'FOUL', 'VAR'];
+            const type = Math.random() < 0.6 ? 'YELLOW_CARD' : events[Math.floor(Math.random() * events.length)];
+            match.events.push({ type, minute: match.minute, team: Math.random() < 0.5 ? 'home' : 'away', player: randomPlayerName() });
+          } else if (isBasketball) {
+            const events = ['FOUL', 'TIMEOUT', 'POINT'];
+            match.events.push({ type: events[Math.floor(Math.random() * events.length)], minute: match.minute, team: Math.random() < 0.5 ? 'home' : 'away', player: 'Player' });
+          } else if (isMMA) {
+            match.events.push({ type: 'KNOCKDOWN', minute: match.minute, team: Math.random() < 0.5 ? 'home' : 'away', player: 'Fighter' });
+          }
         }
-      } else {
-        // per-minute rate; was weights * tick/30 with tick=2 → double rate
-        if (Math.random() < weights.homeGoalRate / 60) {
-          match.score.home = Math.min((match.score.home || 0) + 1, weights.maxScore);
-          match.events = match.events || [];
-          match.events.push({
-            type: 'GOAL', minute: newMinute, team: 'home',
-            homeScore: match.score.home, awayScore: match.score.away,
-            at: new Date(),
-          });
-        }
-        if (Math.random() < weights.awayGoalRate / 60) {
-          match.score.away = Math.min((match.score.away || 0) + 1, weights.maxScore);
-          match.events = match.events || [];
-          match.events.push({
-            type: 'GOAL', minute: newMinute, team: 'away',
-            homeScore: match.score.home, awayScore: match.score.away,
-            at: new Date(),
-          });
-        }
-      }
-
-      if (newMinute >= 1 && Math.random() < 0.015) {
-        const isRed = Math.random() < 0.05;
-        match.events = match.events || [];
-        match.events.push({
-          type: isRed ? 'RED_CARD' : 'YELLOW_CARD',
-          minute: newMinute,
-          team: Math.random() < 0.5 ? 'home' : 'away',
-          player: randomPlayerName(),
-        });
       }
 
       match.lastUpdated = new Date();
@@ -310,6 +315,7 @@ class AIMatchService {
           _id: match._id,
           score: match.score,
           minute: match.minute,
+          addedTime: match.addedTime,
           status: match.status,
           league: match.league,
           lastUpdated: match.lastUpdated,
@@ -326,44 +332,41 @@ class AIMatchService {
     for (const match of live) {
       const sport = match.sport || 'soccer';
       const dur = SPORT_DURATIONS[sport] || SPORT_DURATIONS.soccer;
+      
+      const end2H = dur.regular + (match.addedTime2H || 0);
+      
+      if ((match.minute || 0) >= end2H || (match.status === 'HALFTIME' && match.minute >= dur.halftime)) {
+        if (match.status === 'HALFTIME') {
+           match.status = 'SECOND_HALF';
+        } else {
+            if (match.source === 'admin-manual' && match.scriptedOutcome?.homeScore !== null) {
+              match.score = {
+                home: match.scriptedOutcome.homeScore || 0,
+                away: match.scriptedOutcome.awayScore || 0,
+              };
+            }
 
-      if ((match.minute || 0) >= dur.regular) {
-        if (
-          match.source === 'admin-manual' &&
-          match.scriptedOutcome?.homeScore != null &&
-          match.scriptedOutcome?.awayScore != null
-        ) {
-          match.score = {
-            home: match.scriptedOutcome.homeScore || 0,
-            away: match.scriptedOutcome.awayScore || 0,
-          };
+            match.status = 'FINISHED';
+            match.finishedAt = new Date();
+            match.minute = dur.regular;
+            match.result = {
+              winner: match.score.home > match.score.away ? 'HOME' : match.score.away > match.score.home ? 'AWAY' : 'DRAW',
+              score: match.score,
+              isSettled: true,
+              settledAt: new Date(),
+            };
+            
+            const io = global.io;
+            if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
+
+            try {
+              const { settleBetsForMatch } = require('./betSettlementService');
+              await settleBetsForMatch(match._id, match, global.io);
+            } catch (err) {
+              console.error('[ai-sim] settle failed for', match._id, err.message);
+            }
         }
-
-        match.status = 'FINISHED';
-        match.finishedAt = new Date();
-        match.result = {
-          winner:
-            match.score.home > match.score.away ? 'HOME'
-            : match.score.away > match.score.home ? 'AWAY'
-            : 'DRAW',
-          score: match.score,
-          isSettled: true,
-          settledAt: new Date(),
-        };
         await match.save();
-
-        const io = global.io;
-        if (io) io.emit('match-finished', { matchId: match._id, result: match.result });
-
-        try {
-          const { settleBetsForMatch } = require('./betSettlementService');
-          const result = await settleBetsForMatch(match._id, match, global.io);
-          if (result?.settled > 0) {
-            console.log(`💰 Settled ${result.settled} bets for match ${match._id} (won ${result.won}, lost ${result.lost})`);
-          }
-        } catch (err) {
-          console.error('[ai-sim] settle failed for', match._id, err.message);
-        }
       }
     }
   }
@@ -628,9 +631,6 @@ class AIMatchService {
   }
 }
 
-// ============================================================
-//  HELPERS
-// ============================================================
 const FIRST_INITIALS = ['J.','M.','A.','K.','L.','R.','S.','T.','D.','B.','C.','N.','P.','E.','V.'];
 const LAST_NAMES = [
   'Silva','Garcia','Müller','Rossi','Salah','Kane','Lopez','Martinez',
@@ -644,7 +644,7 @@ function randomPlayerName() {
 }
 
 function goalScheduleForMatch(matchId, targetHome, targetAway) {
-  const seed = String(matchId ?? '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) || 1;
+  const seed = String(matchId).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const goals = [];
   let counter = 0;
 

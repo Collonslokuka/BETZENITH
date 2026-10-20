@@ -1,8 +1,6 @@
 // server/data/leagueRegistry.js
-
 const LEAGUES = {
   soccer: [
-    // NEW: Club Friendly — a normal league entry with a cross-club pool
     {
       id: 'club-friendly', name: 'Club Friendly', country: 'International', priority: 2,
       teams: ['Arsenal','Chelsea','Liverpool','Man City','Man United','Tottenham','Newcastle','Aston Villa','Real Madrid','Barcelona','Atletico Madrid','Sevilla','Real Betis','Valencia','Inter','AC Milan','Juventus','Napoli','Roma','Lazio','Bayern Munich','Borussia Dortmund','RB Leipzig','Bayer Leverkusen','PSG','Marseille','Monaco','Lyon','Benfica','Porto','Sporting CP','Ajax','PSV','Feyenoord','Galatasaray','Fenerbahce','Besiktas','Celtic','Rangers','Al Hilal','Al Nassr','Inter Miami','LAFC','Flamengo','Palmeiras','Boca Juniors','River Plate'],
@@ -188,14 +186,15 @@ const LEAGUES = {
 };
 
 const SPORT_DURATIONS = {
-  soccer: { regular: 90, halftime: 45 },
-  basketball: { regular: 48, halftime: 24 },
-  'american-football': { regular: 60, halftime: 30 },
-  baseball: { regular: 180, halftime: 90 },
-  'ice-hockey': { regular: 60, halftime: 20 },
-  tennis: { regular: 120, halftime: 60 },
-  cricket: { regular: 180, halftime: 90 },
-  mma: { regular: 25, halftime: 12 },
+  // 1H: 1 to 4 mins | 2H: 3 to 6 mins | Total: 4 to 10 mins
+  soccer: { regular: 90, halftime: 45, addedTime1H: [1, 4], addedTime2H: [3, 6] }, 
+  basketball: { regular: 48, halftime: 24, addedTime1H: [0, 0], addedTime2H: [0, 0] },
+  'american-football': { regular: 60, halftime: 30, addedTime1H: [0, 0], addedTime2H: [0, 0] },
+  baseball: { regular: 180, halftime: 90, addedTime1H: [0, 0], addedTime2H: [0, 0] }, 
+  'ice-hockey': { regular: 60, halftime: 20, addedTime1H: [0, 0], addedTime2H: [0, 0] },
+  tennis: { regular: 120, halftime: 60, addedTime1H: [0, 0], addedTime2H: [0, 0] },
+  cricket: { regular: 180, halftime: 90, addedTime1H: [0, 0], addedTime2H: [0, 0] },
+  mma: { regular: 25, halftime: 12, addedTime1H: [0, 0], addedTime2H: [0, 0] }, 
 };
 
 const SPORT_SCORE_WEIGHTS = {
